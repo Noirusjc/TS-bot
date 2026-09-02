@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Logs — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <a href="/dashboard" class="sidebar-logo">
+    <div class="logo-icon">🤖</div>
+    <div><div class="logo-text">TS3 Bot Panel</div><div class="logo-sub">Management System</div></div>
+  </a>
+  <nav class="nav-section">
+    <div class="nav-label">Main</div>
+    <a href="/dashboard"          class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <div class="nav-label">Bot Config</div>
+    <a href="/temporary-channels" class="nav-item"><span class="icon">📁</span> Temp Channels</a>
+    <a href="/clock-date"         class="nav-item"><span class="icon">🕒</span> Clock &amp; Date</a>
+    <a href="/poke-message"       class="nav-item"><span class="icon">💬</span> Poke Message</a>
+    <div class="nav-label">System</div>
+    <a href="/logs"               class="nav-item active"><span class="icon">📋</span> Logs</a>
+    <a href="/settings"           class="nav-item"><span class="icon">⚙️</span> Settings</a>
+  </nav>
+  <div class="sidebar-footer"><div class="sidebar-user" id="sidebar-username">Admin</div></div>
+</aside>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="flex gap-2">
+      <button class="hamburger" id="hamburger">☰</button>
+      <span class="topbar-title">System Logs</span>
+    </div>
+    <div class="topbar-right">
+      <div class="ts-status-badge disconnected" id="ts-status-badge">
+        <div class="dot"></div><span class="ts-text">Disconnected</span>
+      </div>
+      <button class="btn-logout" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <div class="flex-between">
+        <div>
+          <h1>System Logs</h1>
+          <p>Search and filter all bot activity and events.</p>
+        </div>
+        <button id="btn-clear" class="btn btn-danger btn-sm">🗑 Clear Old Logs</button>
+      </div>
+    </div>
+
+    <div id="alert-top" class="alert"></div>
+
+    <!-- Filters -->
+    <div class="card">
+      <div class="card-title">🔍 Filters</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Search</label>
+          <input id="f-search" class="form-control" type="text" placeholder="Search message or event..."/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Level</label>
+          <select id="f-level" class="form-control">
+            <option value="">All Levels</option>
+            <option>DEBUG</option>
+            <option>INFO</option>
+            <option>WARN</option>
+            <option>ERROR</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Event Type</label>
+          <input id="f-event" class="form-control" type="text" placeholder="e.g. TEMP_CHANNEL"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Per Page</label>
+          <select id="f-limit" class="form-control">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+      <button id="btn-search" class="btn btn-primary btn-sm">🔍 Search</button>
+      <button id="btn-refresh" class="btn btn-outline btn-sm" style="margin-left:8px;">🔄 Refresh</button>
+      <button id="btn-auto" class="btn btn-outline btn-sm" style="margin-left:8px;" data-auto="0">▶ Auto Refresh</button>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="card">
+      <div class="flex-between mb-2">
+        <span class="fw-600 fs-sm" id="log-count">Loading...</span>
+        <div class="flex gap-2" id="pagination"></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:140px;">Timestamp</th>
+              <th style="width:70px;">Level</th>
+              <th style="width:200px;">Event</th>
+              <th>Message</th>
+              <th style="width:100px;">Client</th>
+              <th style="width:100px;">Channel</th>
+            </tr>
+          </thead>
+          <tbody id="log-tbody">
+            <tr><td colspan="6" class="text-muted">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+let currentPage = 1;
+let autoTimer = null;
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) { if(!iso) return '—'; return new Date(iso).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'medium'}); }
+function levelBadge(l) { return {DEBUG:'badge-muted',INFO:'badge-info',WARN:'badge-warning',ERROR:'badge-danger'}[l]||'badge-muted'; }
+
+async function loadLogs(page = 1) {
+  currentPage = page;
+  const params = { page, limit: document.getElementById('f-limit').value };
+  const search = document.getElementById('f-search').value.trim();
+  const level  = document.getElementById('f-level').value;
+  const event  = document.getElementById('f-event').value.trim();
+  if (search) params.search = search;
+  if (level)  params.level  = level;
+  if (event)  params.eventType = event;
+
+  try {
+    const data = await API.getLogs(params);
+    const tbody = document.getElementById('log-tbody');
+
+    document.getElementById('log-count').textContent = `${data.total} total logs — page ${data.page} of ${data.pages}`;
+
+    if (!data.logs.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No logs found.</td></tr>';
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    tbody.innerHTML = data.logs.map(l => `
+      <tr>
+        <td class="fs-sm text-muted" style="white-space:nowrap;">${fmtDate(l.timestamp)}</td>
+        <td><span class="badge ${levelBadge(l.level)}">${l.level}</span></td>
+        <td class="fs-sm">${escHtml(l.eventType)}</td>
+        <td class="fs-sm">${escHtml(l.message)}</td>
+        <td class="fs-sm text-muted">${escHtml(l.clientId||'')}</td>
+        <td class="fs-sm text-muted">${escHtml(l.channelId||'')}</td>
+      </tr>
+    `).join('');
+
+    // Pagination
+    const pag = document.getElementById('pagination');
+    const pages = data.pages;
+    let html = '';
+    if (page > 1)   html += `<button class="btn btn-outline btn-sm" onclick="loadLogs(${page-1})">‹ Prev</button>`;
+    if (page < pages) html += `<button class="btn btn-outline btn-sm" onclick="loadLogs(${page+1})">Next ›</button>`;
+    pag.innerHTML = html;
+  } catch(err) {
+    document.getElementById('log-tbody').innerHTML = `<tr><td colspan="6" class="text-danger">Error: ${escHtml(err.message)}</td></tr>`;
+  }
+}
+
+document.getElementById('btn-search').addEventListener('click', () => loadLogs(1));
+document.getElementById('btn-refresh').addEventListener('click', () => loadLogs(currentPage));
+
+document.getElementById('btn-auto').addEventListener('click', function() {
+  if (autoTimer) {
+    clearInterval(autoTimer);
+    autoTimer = null;
+    this.textContent = '▶ Auto Refresh';
+    this.classList.remove('btn-primary');
+    this.classList.add('btn-outline');
+  } else {
+    autoTimer = setInterval(() => loadLogs(1), 5000);
+    this.textContent = '⏸ Stop Auto';
+    this.classList.remove('btn-outline');
+    this.classList.add('btn-primary');
+  }
+});
+
+document.getElementById('btn-clear').addEventListener('click', async () => {
+  if (!confirm('Delete log entries older than 30 days?')) return;
+  try {
+    const { deleted } = await API.clearLogs(30);
+    showAlert('alert-top', `Deleted ${deleted} old log entries.`, 'success');
+    loadLogs(1);
+  } catch(err) {
+    showAlert('alert-top', 'Clear failed: ' + err.message, 'danger');
+  }
+});
+
+// Search on Enter
+document.getElementById('f-search').addEventListener('keydown', (e) => { if(e.key === 'Enter') loadLogs(1); });
+
+loadLogs(1);
+</script>
+</body>
+</html>

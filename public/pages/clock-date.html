@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Clock &amp; Date — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <a href="/dashboard" class="sidebar-logo">
+    <div class="logo-icon">🤖</div>
+    <div><div class="logo-text">TS3 Bot Panel</div><div class="logo-sub">Management System</div></div>
+  </a>
+  <nav class="nav-section">
+    <div class="nav-label">Main</div>
+    <a href="/dashboard"          class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <div class="nav-label">Bot Config</div>
+    <a href="/temporary-channels" class="nav-item"><span class="icon">📁</span> Temp Channels</a>
+    <a href="/clock-date"         class="nav-item active"><span class="icon">🕒</span> Clock &amp; Date</a>
+    <a href="/poke-message"       class="nav-item"><span class="icon">💬</span> Poke Message</a>
+    <div class="nav-label">System</div>
+    <a href="/logs"               class="nav-item"><span class="icon">📋</span> Logs</a>
+    <a href="/settings"           class="nav-item"><span class="icon">⚙️</span> Settings</a>
+  </nav>
+  <div class="sidebar-footer"><div class="sidebar-user" id="sidebar-username">Admin</div></div>
+</aside>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="flex gap-2">
+      <button class="hamburger" id="hamburger">☰</button>
+      <span class="topbar-title">Clock &amp; Date Settings</span>
+    </div>
+    <div class="topbar-right">
+      <div class="ts-status-badge disconnected" id="ts-status-badge">
+        <div class="dot"></div><span class="ts-text">Disconnected</span>
+      </div>
+      <button class="btn-logout" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <h1>Iran Clock &amp; Jalali Date</h1>
+      <p>Configure TeamSpeak channels that display the current Iran time and Persian calendar date.</p>
+    </div>
+
+    <div id="alert-top" class="alert"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- Clock Card -->
+      <div class="card">
+        <div class="card-title">🕒 Iran Clock Channel</div>
+
+        <div class="form-group">
+          <div class="toggle-wrap">
+            <label class="toggle"><input type="checkbox" id="clock-enabled"/><span class="toggle-slider"></span></label>
+            <span class="toggle-label">Enable Clock Updater</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="clock-channel-id">Clock Channel ID <span>*</span></label>
+          <input id="clock-channel-id" class="form-control" type="text" placeholder="e.g. 20"/>
+          <p class="form-hint">TeamSpeak channel that displays the current time.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="clock-format">Format</label>
+          <input id="clock-format" class="form-control" type="text" placeholder="🕒 ساعت ایران: HH:mm"/>
+          <p class="form-hint">Uses moment.js tokens. HH=hour, mm=minute, ss=second</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="clock-interval">Update Interval (seconds)</label>
+          <input id="clock-interval" class="form-control" type="number" min="10" max="3600" value="60"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Live Preview</label>
+          <div class="preview-box" id="clock-preview">—</div>
+        </div>
+      </div>
+
+      <!-- Date Card -->
+      <div class="card">
+        <div class="card-title">📅 Iran Date Channel (Jalali)</div>
+
+        <div class="form-group">
+          <div class="toggle-wrap">
+            <label class="toggle"><input type="checkbox" id="date-enabled"/><span class="toggle-slider"></span></label>
+            <span class="toggle-label">Enable Date Updater</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="date-channel-id">Date Channel ID <span>*</span></label>
+          <input id="date-channel-id" class="form-control" type="text" placeholder="e.g. 21"/>
+          <p class="form-hint">TeamSpeak channel that displays the Jalali date.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="date-format">Format</label>
+          <input id="date-format" class="form-control" type="text" placeholder="📅 تاریخ: YYYY/MM/DD"/>
+          <p class="form-hint">Uses Jalali tokens. YYYY=year, MM=month, DD=day</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="date-interval">Update Interval (seconds)</label>
+          <input id="date-interval" class="form-control" type="number" min="10" max="3600" value="60"/>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Live Preview</label>
+          <div class="preview-box" id="date-preview">—</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-top:0;">
+      <div class="card-title">ℹ️ Timezone Information</div>
+      <p class="fs-sm" style="color:var(--text-secondary);line-height:1.8;">
+        • Timezone: <strong class="text-accent">Asia/Tehran</strong> — automatically handles Iran Standard Time (IRST, UTC+3:30) and Iran Daylight Time (IRDT, UTC+4:30).<br>
+        • Date uses the <strong class="text-accent">Jalali (Shamsi / Persian)</strong> calendar system.<br>
+        • The bot will avoid sending a rename command if the channel name has not changed since the last update.
+      </p>
+    </div>
+
+    <div style="margin-top:4px;">
+      <button id="btn-save" class="btn btn-primary">💾 Save Settings</button>
+      <button id="btn-preview" class="btn btn-outline" style="margin-left:8px;">🔄 Refresh Preview</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+async function loadPage() {
+  try {
+    const s = await API.getClockDate();
+    document.getElementById('clock-enabled').checked    = s.clockEnabled;
+    document.getElementById('clock-channel-id').value   = s.clockChannelId || '';
+    document.getElementById('clock-format').value       = s.clockFormat || '🕒 ساعت ایران: HH:mm';
+    document.getElementById('clock-interval').value     = s.clockUpdateInterval || 60;
+    document.getElementById('date-enabled').checked     = s.dateEnabled;
+    document.getElementById('date-channel-id').value    = s.dateChannelId || '';
+    document.getElementById('date-format').value        = s.dateFormat || '📅 تاریخ: YYYY/MM/DD';
+    document.getElementById('date-interval').value      = s.dateUpdateInterval || 60;
+
+    if (s.clockPreview) document.getElementById('clock-preview').textContent = s.clockPreview;
+    if (s.datePreview)  document.getElementById('date-preview').textContent  = s.datePreview;
+  } catch(err) {
+    showAlert('alert-top', 'Failed to load settings: ' + err.message, 'danger');
+  }
+}
+
+document.getElementById('btn-preview').addEventListener('click', async () => {
+  try {
+    const cf = document.getElementById('clock-format').value;
+    const df = document.getElementById('date-format').value;
+    const res = await API.previewClockDate({ clockFormat: cf, dateFormat: df });
+    if (res.clockPreview) document.getElementById('clock-preview').textContent = res.clockPreview;
+    if (res.datePreview)  document.getElementById('date-preview').textContent  = res.datePreview;
+  } catch {}
+});
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  const data = {
+    clockEnabled:        document.getElementById('clock-enabled').checked,
+    clockChannelId:      document.getElementById('clock-channel-id').value.trim(),
+    clockFormat:         document.getElementById('clock-format').value.trim(),
+    clockUpdateInterval: parseInt(document.getElementById('clock-interval').value) || 60,
+    dateEnabled:         document.getElementById('date-enabled').checked,
+    dateChannelId:       document.getElementById('date-channel-id').value.trim(),
+    dateFormat:          document.getElementById('date-format').value.trim(),
+    dateUpdateInterval:  parseInt(document.getElementById('date-interval').value) || 60,
+  };
+
+  setLoading('btn-save', true);
+  try {
+    await API.updateClockDate(data);
+    showAlert('alert-top', 'Clock & Date settings saved!', 'success');
+    loadPage(); // reload preview
+  } catch(err) {
+    showAlert('alert-top', 'Save failed: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-save', false, '💾 Save Settings');
+  }
+});
+
+loadPage();
+</script>
+</body>
+</html>

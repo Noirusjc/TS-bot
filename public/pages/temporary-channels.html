@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Temporary Channels — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <a href="/dashboard" class="sidebar-logo">
+    <div class="logo-icon">🤖</div>
+    <div><div class="logo-text">TS3 Bot Panel</div><div class="logo-sub">Management System</div></div>
+  </a>
+  <nav class="nav-section">
+    <div class="nav-label">Main</div>
+    <a href="/dashboard"          class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <div class="nav-label">Bot Config</div>
+    <a href="/temporary-channels" class="nav-item active"><span class="icon">📁</span> Temp Channels</a>
+    <a href="/clock-date"         class="nav-item"><span class="icon">🕒</span> Clock &amp; Date</a>
+    <a href="/poke-message"       class="nav-item"><span class="icon">💬</span> Poke Message</a>
+    <div class="nav-label">System</div>
+    <a href="/logs"               class="nav-item"><span class="icon">📋</span> Logs</a>
+    <a href="/settings"           class="nav-item"><span class="icon">⚙️</span> Settings</a>
+  </nav>
+  <div class="sidebar-footer"><div class="sidebar-user" id="sidebar-username">Admin</div></div>
+</aside>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="flex gap-2">
+      <button class="hamburger" id="hamburger">☰</button>
+      <span class="topbar-title">Temporary Channel Manager</span>
+    </div>
+    <div class="topbar-right">
+      <div class="ts-status-badge disconnected" id="ts-status-badge">
+        <div class="dot"></div><span class="ts-text">Disconnected</span>
+      </div>
+      <button class="btn-logout" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <h1>Temporary Channel Manager</h1>
+      <p>Configure how temporary TeamSpeak channels are created and managed.</p>
+    </div>
+
+    <div id="alert-top" class="alert"></div>
+
+    <!-- Global Enable Toggle -->
+    <div class="card">
+      <div class="card-title">🌐 Global Status</div>
+      <div class="toggle-wrap">
+        <label class="toggle"><input type="checkbox" id="global-enabled"/><span class="toggle-slider"></span></label>
+        <span class="toggle-label" id="global-label">Loading...</span>
+      </div>
+      <p class="form-hint mt-1">When disabled, no temporary channels will be created regardless of individual rule settings.</p>
+    </div>
+
+    <!-- Rule Editor -->
+    <div class="card" id="rule-card">
+      <div class="card-title flex-between">
+        <span>⚙️ Channel Rule Configuration</span>
+        <div class="flex gap-2" id="rule-actions" style="display:none!important;"></div>
+      </div>
+
+      <!-- Rule enabled -->
+      <div class="form-group">
+        <div class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="rule-enabled"/><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Rule Enabled</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="rule-name">Rule Name</label>
+          <input id="rule-name" class="form-control" type="text" placeholder="Default Rule"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rule-source">Source Channel ID <span>*</span></label>
+          <input id="rule-source" class="form-control" type="text" placeholder="e.g. 12"/>
+          <p class="form-hint">The channel users join to trigger creation.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rule-parent">Parent Channel ID</label>
+          <input id="rule-parent" class="form-control" type="text" placeholder="e.g. 5 (optional)"/>
+          <p class="form-hint">New channels will be created under this parent. Leave empty for root.</p>
+        </div>
+      </div>
+
+      <hr class="divider"/>
+      <div class="card-title" style="border:none;margin-bottom:12px;padding-bottom:0;font-size:0.85rem;color:var(--text-secondary);">📝 Channel Naming</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="rule-prefix">Channel Name <span>*</span></label>
+          <input id="rule-prefix" class="form-control" type="text" placeholder="e.g. Gaming"/>
+          <p class="form-hint">Result: <strong id="name-preview" style="color:var(--accent);">Gaming | Amir</strong></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rule-separator">Separator</label>
+          <input id="rule-separator" class="form-control" type="text" placeholder=" | " value=" | "/>
+          <p class="form-hint">Between configured name and user nickname.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rule-maxclients">Max Clients</label>
+          <input id="rule-maxclients" class="form-control" type="number" min="-1" max="256" placeholder="-1"/>
+          <p class="form-hint">-1 = Unlimited</p>
+        </div>
+      </div>
+
+      <hr class="divider"/>
+      <div class="card-title" style="border:none;margin-bottom:12px;padding-bottom:0;font-size:0.85rem;color:var(--text-secondary);">🔐 Password</div>
+
+      <div class="form-group">
+        <div class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="rule-pass-enabled"/><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Enable Channel Password</span>
+        </div>
+      </div>
+
+      <div id="pass-options" style="display:none;">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="rule-pass-length">Password Length</label>
+            <input id="rule-pass-length" class="form-control" type="number" min="4" max="32" value="8"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="rule-pass-charset">Character Set</label>
+            <input id="rule-pass-charset" class="form-control" type="text" value="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"/>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider"/>
+      <div class="card-title" style="border:none;margin-bottom:12px;padding-bottom:0;font-size:0.85rem;color:var(--text-secondary);">👑 Permissions</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="rule-group-id">Channel Group ID</label>
+          <input id="rule-group-id" class="form-control" type="text" placeholder="e.g. 8"/>
+          <p class="form-hint">Assigned to channel creator. Leave empty to skip.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rule-deletion-delay">Empty Channel Deletion Delay (seconds)</label>
+          <input id="rule-deletion-delay" class="form-control" type="number" min="30" max="3600" value="180"/>
+          <p class="form-hint">Default: 180s (3 minutes)</p>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <button id="btn-save-rule" class="btn btn-primary">💾 Save Configuration</button>
+      </div>
+    </div>
+
+    <!-- Active channels table -->
+    <div class="card">
+      <div class="card-title">📂 Active Temporary Channels</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Channel ID</th><th>Owner</th><th>Created</th><th>Status</th><th>Delete At</th></tr>
+          </thead>
+          <tbody id="active-tbody">
+            <tr><td colspan="5" class="text-muted">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+let ruleId = null;
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(iso) { if(!iso) return '—'; return new Date(iso).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'medium'}); }
+
+// Name preview
+function updateNamePreview() {
+  const prefix = document.getElementById('rule-prefix').value || 'Channel';
+  const sep    = document.getElementById('rule-separator').value || ' | ';
+  document.getElementById('name-preview').textContent = prefix + sep + 'Amir';
+}
+document.getElementById('rule-prefix').addEventListener('input', updateNamePreview);
+document.getElementById('rule-separator').addEventListener('input', updateNamePreview);
+
+// Password toggle
+document.getElementById('rule-pass-enabled').addEventListener('change', (e) => {
+  document.getElementById('pass-options').style.display = e.target.checked ? '' : 'none';
+});
+
+async function loadPage() {
+  try {
+    const { enabled, rules } = await API.getTempRules();
+    const globalCheck = document.getElementById('global-enabled');
+    const globalLabel = document.getElementById('global-label');
+    globalCheck.checked = enabled;
+    globalLabel.textContent = enabled ? 'Enabled — Bot will create channels' : 'Disabled — Bot is paused';
+
+    globalCheck.addEventListener('change', async () => {
+      await API.setTempEnabled(globalCheck.checked);
+      globalLabel.textContent = globalCheck.checked ? 'Enabled — Bot will create channels' : 'Disabled — Bot is paused';
+    });
+
+    if (rules.length > 0) fillForm(rules[0]);
+    loadActiveChannels();
+  } catch(err) {
+    showAlert('alert-top', 'Failed to load configuration: ' + err.message, 'danger');
+  }
+}
+
+function fillForm(rule) {
+  ruleId = rule.id;
+  document.getElementById('rule-enabled').checked        = rule.enabled;
+  document.getElementById('rule-name').value             = rule.name;
+  document.getElementById('rule-source').value           = rule.sourceChannelId;
+  document.getElementById('rule-parent').value           = rule.parentChannelId || '';
+  document.getElementById('rule-prefix').value           = rule.channelNamePrefix;
+  document.getElementById('rule-separator').value        = rule.nameSeparator;
+  document.getElementById('rule-maxclients').value       = rule.maxClients;
+  document.getElementById('rule-pass-enabled').checked   = rule.passwordEnabled;
+  document.getElementById('rule-pass-length').value      = rule.passwordLength;
+  document.getElementById('rule-pass-charset').value     = rule.passwordCharset;
+  document.getElementById('rule-group-id').value         = rule.channelGroupId || '';
+  document.getElementById('rule-deletion-delay').value   = rule.deletionDelay;
+  document.getElementById('pass-options').style.display  = rule.passwordEnabled ? '' : 'none';
+  updateNamePreview();
+}
+
+document.getElementById('btn-save-rule').addEventListener('click', async () => {
+  const data = {
+    name:             document.getElementById('rule-name').value.trim() || 'Default Rule',
+    enabled:          document.getElementById('rule-enabled').checked,
+    sourceChannelId:  document.getElementById('rule-source').value.trim(),
+    parentChannelId:  document.getElementById('rule-parent').value.trim() || null,
+    channelNamePrefix:document.getElementById('rule-prefix').value.trim(),
+    nameSeparator:    document.getElementById('rule-separator').value,
+    passwordEnabled:  document.getElementById('rule-pass-enabled').checked,
+    passwordLength:   parseInt(document.getElementById('rule-pass-length').value),
+    passwordCharset:  document.getElementById('rule-pass-charset').value,
+    maxClients:       parseInt(document.getElementById('rule-maxclients').value) || -1,
+    channelGroupId:   document.getElementById('rule-group-id').value.trim() || null,
+    deletionDelay:    parseInt(document.getElementById('rule-deletion-delay').value) || 180,
+  };
+
+  if (!data.sourceChannelId) return showAlert('alert-top', 'Source Channel ID is required.', 'danger');
+  if (!/^\d+$/.test(data.sourceChannelId)) return showAlert('alert-top', 'Source Channel ID must be a number.', 'danger');
+
+  setLoading('btn-save-rule', true);
+  try {
+    if (ruleId) {
+      await API.updateTempRule(ruleId, data);
+    } else {
+      const rule = await API.createTempRule(data);
+      ruleId = rule.id;
+    }
+    showAlert('alert-top', 'Configuration saved successfully!', 'success');
+  } catch(err) {
+    showAlert('alert-top', 'Save failed: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-save-rule', false, '💾 Save Configuration');
+  }
+});
+
+async function loadActiveChannels() {
+  try {
+    const channels = await API.getActiveChannels();
+    const tbody = document.getElementById('active-tbody');
+    if (!channels.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No active channels.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = channels.map(ch => `
+      <tr>
+        <td><code>#${escHtml(ch.tsChannelId)}</code></td>
+        <td>${escHtml(ch.ownerNickname)}</td>
+        <td class="fs-sm text-muted">${fmtDate(ch.createdAt)}</td>
+        <td><span class="badge ${ch.status==='ACTIVE'?'badge-success':'badge-warning'}">${ch.status}</span></td>
+        <td class="fs-sm text-muted">${ch.deleteAt ? fmtDate(ch.deleteAt) : '—'}</td>
+      </tr>
+    `).join('');
+  } catch {}
+}
+
+loadPage();
+setInterval(loadActiveChannels, 15000);
+</script>
+</body>
+</html>

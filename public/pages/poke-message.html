@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Poke Message — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <a href="/dashboard" class="sidebar-logo">
+    <div class="logo-icon">🤖</div>
+    <div><div class="logo-text">TS3 Bot Panel</div><div class="logo-sub">Management System</div></div>
+  </a>
+  <nav class="nav-section">
+    <div class="nav-label">Main</div>
+    <a href="/dashboard"          class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <div class="nav-label">Bot Config</div>
+    <a href="/temporary-channels" class="nav-item"><span class="icon">📁</span> Temp Channels</a>
+    <a href="/clock-date"         class="nav-item"><span class="icon">🕒</span> Clock &amp; Date</a>
+    <a href="/poke-message"       class="nav-item active"><span class="icon">💬</span> Poke Message</a>
+    <div class="nav-label">System</div>
+    <a href="/logs"               class="nav-item"><span class="icon">📋</span> Logs</a>
+    <a href="/settings"           class="nav-item"><span class="icon">⚙️</span> Settings</a>
+  </nav>
+  <div class="sidebar-footer"><div class="sidebar-user" id="sidebar-username">Admin</div></div>
+</aside>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="flex gap-2">
+      <button class="hamburger" id="hamburger">☰</button>
+      <span class="topbar-title">Poke Message Settings</span>
+    </div>
+    <div class="topbar-right">
+      <div class="ts-status-badge disconnected" id="ts-status-badge">
+        <div class="dot"></div><span class="ts-text">Disconnected</span>
+      </div>
+      <button class="btn-logout" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <h1>Poke Message Template</h1>
+      <p>Customize the message sent to users when their temporary channel is created.</p>
+    </div>
+
+    <div id="alert-top" class="alert"></div>
+
+    <!-- Placeholders Info -->
+    <div class="card" style="border-color:var(--accent);background:var(--info-bg);">
+      <div class="card-title" style="color:var(--accent);">📌 Available Placeholders</div>
+      <div class="flex gap-3" style="flex-wrap:wrap;">
+        <span class="badge badge-info" style="font-size:0.85rem;padding:5px 12px;">{USER_NICKNAME}</span>
+        <span class="badge badge-info" style="font-size:0.85rem;padding:5px 12px;">{CHANNEL_NAME}</span>
+        <span class="badge badge-info" style="font-size:0.85rem;padding:5px 12px;">{CHANNEL_PASSWORD}</span>
+      </div>
+      <p class="fs-sm mt-2" style="color:var(--text-secondary);">
+        Supports TeamSpeak BBCode: <code>[color=#FF0000]text[/color]</code>, <code>[b]bold[/b]</code>, <code>[i]italic[/i]</code>
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- Template with password -->
+      <div class="card">
+        <div class="card-title">🔐 Template (Password Enabled)</div>
+        <div class="form-group">
+          <label class="form-label" for="tmpl-pass">BBCode Template</label>
+          <textarea id="tmpl-pass" class="form-control" rows="10"
+            placeholder="Enter BBCode poke message..."></textarea>
+          <p class="form-hint">Used when channel password is enabled.</p>
+        </div>
+        <button id="btn-preview-pass" class="btn btn-outline btn-sm">👁 Preview</button>
+        <div class="form-group mt-2">
+          <label class="form-label">Preview (raw text)</label>
+          <div class="preview-box" id="preview-pass">—</div>
+        </div>
+      </div>
+
+      <!-- Template without password -->
+      <div class="card">
+        <div class="card-title">🔓 Template (No Password)</div>
+        <div class="form-group">
+          <label class="form-label" for="tmpl-nopass">BBCode Template</label>
+          <textarea id="tmpl-nopass" class="form-control" rows="10"
+            placeholder="Enter BBCode poke message..."></textarea>
+          <p class="form-hint">Used when channel password is disabled.</p>
+        </div>
+        <button id="btn-preview-nopass" class="btn btn-outline btn-sm">👁 Preview</button>
+        <div class="form-group mt-2">
+          <label class="form-label">Preview (raw text)</label>
+          <div class="preview-box" id="preview-nopass">—</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card" style="margin-top:0;">
+      <div class="card-title">ℹ️ Notes</div>
+      <p class="fs-sm" style="color:var(--text-secondary);line-height:1.8;">
+        • TeamSpeak poke messages are limited to ~100 characters per message. The bot sends each line as a separate poke.<br>
+        • If a user's nickname contains special characters, they are automatically sanitized to prevent command injection.<br>
+        • The default template uses TeamSpeak's BBCode color system for a professional appearance.
+      </p>
+    </div>
+
+    <button id="btn-save" class="btn btn-primary">💾 Save Templates</button>
+    <button id="btn-reset" class="btn btn-outline" style="margin-left:8px;">↺ Reset to Default</button>
+
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+const DEFAULT_PASS = `[color=#00FF88][b]╔══════════════════════╗[/b][/color]
+[color=#00FF88][b]   ✓ CHANNEL CREATED[/b][/color]
+[color=#00FF88][b]╚══════════════════════╝[/b][/color]
+[color=#FFFFFF]👤 Owner:[/color] [color=#00BFFF]{USER_NICKNAME}[/color]
+[color=#FFFFFF]🔐 Password:[/color] [color=#FFD700][b]{CHANNEL_PASSWORD}[/b][/color]
+[color=#AAAAAA]Your temporary channel is ready.[/color]`;
+
+const DEFAULT_NOPASS = `[color=#00FF88][b]╔══════════════════════╗[/b][/color]
+[color=#00FF88][b]   ✓ CHANNEL CREATED[/b][/color]
+[color=#00FF88][b]╚══════════════════════╝[/b][/color]
+[color=#FFFFFF]👤 Owner:[/color] [color=#00BFFF]{USER_NICKNAME}[/color]
+[color=#FFFFFF]📢 Channel:[/color] [color=#FFD700][b]{CHANNEL_NAME}[/b][/color]
+[color=#AAAAAA]Your temporary channel is ready.[/color]`;
+
+async function loadPage() {
+  try {
+    const s = await API.getPoke();
+    document.getElementById('tmpl-pass').value   = s.template || DEFAULT_PASS;
+    document.getElementById('tmpl-nopass').value = s.templateNoPassword || DEFAULT_NOPASS;
+  } catch(err) {
+    showAlert('alert-top', 'Failed to load: ' + err.message, 'danger');
+  }
+}
+
+async function previewTemplate(tmplId, previewId) {
+  const tmpl = document.getElementById(tmplId).value;
+  try {
+    const { preview } = await API.previewPoke(tmpl);
+    document.getElementById(previewId).textContent = preview;
+  } catch {}
+}
+
+document.getElementById('btn-preview-pass').addEventListener('click', () => previewTemplate('tmpl-pass', 'preview-pass'));
+document.getElementById('btn-preview-nopass').addEventListener('click', () => previewTemplate('tmpl-nopass', 'preview-nopass'));
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  document.getElementById('tmpl-pass').value   = DEFAULT_PASS;
+  document.getElementById('tmpl-nopass').value = DEFAULT_NOPASS;
+});
+
+document.getElementById('btn-save').addEventListener('click', async () => {
+  setLoading('btn-save', true);
+  try {
+    await API.updatePoke({
+      template:           document.getElementById('tmpl-pass').value,
+      templateNoPassword: document.getElementById('tmpl-nopass').value,
+    });
+    showAlert('alert-top', 'Poke templates saved!', 'success');
+  } catch(err) {
+    showAlert('alert-top', 'Save failed: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-save', false, '💾 Save Templates');
+  }
+});
+
+loadPage();
+</script>
+</body>
+</html>

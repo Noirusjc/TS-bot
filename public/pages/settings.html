@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Settings — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+<div id="sidebar-overlay" class="sidebar-overlay"></div>
+<aside class="sidebar" id="sidebar">
+  <a href="/dashboard" class="sidebar-logo">
+    <div class="logo-icon">🤖</div>
+    <div><div class="logo-text">TS3 Bot Panel</div><div class="logo-sub">Management System</div></div>
+  </a>
+  <nav class="nav-section">
+    <div class="nav-label">Main</div>
+    <a href="/dashboard"          class="nav-item"><span class="icon">📊</span> Dashboard</a>
+    <div class="nav-label">Bot Config</div>
+    <a href="/temporary-channels" class="nav-item"><span class="icon">📁</span> Temp Channels</a>
+    <a href="/clock-date"         class="nav-item"><span class="icon">🕒</span> Clock &amp; Date</a>
+    <a href="/poke-message"       class="nav-item"><span class="icon">💬</span> Poke Message</a>
+    <div class="nav-label">System</div>
+    <a href="/logs"               class="nav-item"><span class="icon">📋</span> Logs</a>
+    <a href="/settings"           class="nav-item active"><span class="icon">⚙️</span> Settings</a>
+  </nav>
+  <div class="sidebar-footer"><div class="sidebar-user" id="sidebar-username">Admin</div></div>
+</aside>
+
+<div class="main-content">
+  <header class="topbar">
+    <div class="flex gap-2">
+      <button class="hamburger" id="hamburger">☰</button>
+      <span class="topbar-title">Settings</span>
+    </div>
+    <div class="topbar-right">
+      <div class="ts-status-badge disconnected" id="ts-status-badge">
+        <div class="dot"></div><span class="ts-text">Disconnected</span>
+      </div>
+      <button class="btn-logout" id="btn-logout">Logout</button>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <h1>System Settings</h1>
+      <p>Manage admin account and test the TeamSpeak connection.</p>
+    </div>
+
+    <!-- Change Password -->
+    <div class="card">
+      <div class="card-title">🔒 Change Admin Password</div>
+      <div id="alert-pass" class="alert"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="cur-pass">Current Password</label>
+          <input id="cur-pass" class="form-control" type="password" autocomplete="current-password"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="new-pass">New Password</label>
+          <input id="new-pass" class="form-control" type="password" autocomplete="new-password"/>
+          <p class="form-hint">Minimum 8 characters.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="conf-pass">Confirm New Password</label>
+          <input id="conf-pass" class="form-control" type="password" autocomplete="new-password"/>
+        </div>
+      </div>
+      <button id="btn-change-pass" class="btn btn-primary">🔒 Update Password</button>
+    </div>
+
+    <!-- TeamSpeak Connection Test -->
+    <div class="card">
+      <div class="card-title">🔌 TeamSpeak Connection</div>
+      <div id="alert-ts" class="alert"></div>
+      <div class="status-row">
+        <div class="status-dot" id="dot-ts-settings"></div>
+        <span>Status: <strong id="lbl-ts-settings">Loading...</strong></span>
+      </div>
+      <div id="ts-version" class="fs-sm text-muted mt-1"></div>
+      <button id="btn-test-ts" class="btn btn-outline mt-2">🔌 Test Connection</button>
+    </div>
+
+    <!-- System Info -->
+    <div class="card">
+      <div class="card-title">ℹ️ System Information</div>
+      <div class="form-row">
+        <div>
+          <div class="form-label">Bot Version</div>
+          <div class="text-accent fw-600">1.0.0</div>
+        </div>
+        <div>
+          <div class="form-label">Node.js</div>
+          <div class="text-accent fw-600" id="node-version">—</div>
+        </div>
+        <div>
+          <div class="form-label">Uptime</div>
+          <div class="text-accent fw-600" id="sys-uptime">—</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script>
+async function loadSettings() {
+  try {
+    const status = await API.status();
+    const tsStatus = status.tsStatus;
+    const dotTs = document.getElementById('dot-ts-settings');
+    dotTs.className = 'status-dot ' + (tsStatus==='connected'?'online':tsStatus==='reconnecting'?'warn':'offline');
+    document.getElementById('lbl-ts-settings').textContent = tsStatus.charAt(0).toUpperCase()+tsStatus.slice(1);
+    document.getElementById('sys-uptime').textContent = fmtUptime(status.uptime||0);
+    setTSBadge(tsStatus);
+  } catch {}
+}
+
+document.getElementById('btn-test-ts').addEventListener('click', async () => {
+  setLoading('btn-test-ts', true);
+  try {
+    const res = await API.testTS();
+    if (res.success) {
+      showAlert('alert-ts', '✅ Connection successful! ' + (res.version ? JSON.stringify(res.version) : ''), 'success');
+      document.getElementById('ts-version').textContent = res.version ? 'Server version: ' + JSON.stringify(res.version) : '';
+    } else {
+      showAlert('alert-ts', '❌ ' + res.message, 'warning');
+    }
+  } catch(err) {
+    showAlert('alert-ts', 'Test failed: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-test-ts', false, '🔌 Test Connection');
+  }
+});
+
+document.getElementById('btn-change-pass').addEventListener('click', async () => {
+  const cur  = document.getElementById('cur-pass').value;
+  const nw   = document.getElementById('new-pass').value;
+  const conf = document.getElementById('conf-pass').value;
+
+  if (!cur || !nw || !conf) return showAlert('alert-pass', 'All fields are required.', 'danger');
+  if (nw !== conf)           return showAlert('alert-pass', 'New passwords do not match.', 'danger');
+  if (nw.length < 8)         return showAlert('alert-pass', 'New password must be at least 8 characters.', 'danger');
+
+  setLoading('btn-change-pass', true);
+  try {
+    await API.changePassword(cur, nw);
+    showAlert('alert-pass', '✅ Password changed successfully!', 'success');
+    document.getElementById('cur-pass').value  = '';
+    document.getElementById('new-pass').value  = '';
+    document.getElementById('conf-pass').value = '';
+  } catch(err) {
+    showAlert('alert-pass', 'Error: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-change-pass', false, '🔒 Update Password');
+  }
+});
+
+loadSettings();
+</script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+// Prisma Schema for TeamSpeak 3 Management Bot
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Admin Users ─────────────────────────────────────────────────────────────
+
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admin_users")
+}
+
+// ─── Global App Settings ──────────────────────────────────────────────────────
+
+model Setting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+// ─── Temporary Channel Rules ─────────────────────────────────────────────────
+
+model TemporaryChannelRule {
+  id                 Int                @id @default(autoincrement())
+  name               String             @default("Default Rule")
+  enabled            Boolean            @default(true)
+  sourceChannelId    String             // TS channel ID users join to trigger creation
+  parentChannelId    String?            // Where new channels are created under
+  channelNamePrefix  String             @default("Channel")
+  nameSeparator      String             @default(" | ")
+  passwordEnabled    Boolean            @default(false)
+  passwordLength     Int                @default(8)
+  passwordCharset    String             @default("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+  maxClients         Int                @default(-1)  // -1 = unlimited
+  channelGroupId     String?            // Channel Group ID to assign to creator
+  deletionDelay      Int                @default(180) // seconds, default 3 minutes
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  temporaryChannels  TemporaryChannel[]
+
+  @@map("temporary_channel_rules")
+}
+
+// ─── Active Temporary Channels ───────────────────────────────────────────────
+
+model TemporaryChannel {
+  id              Int                  @id @default(autoincrement())
+  tsChannelId     String               @unique
+  ruleId          Int
+  rule            TemporaryChannelRule @relation(fields: [ruleId], references: [id])
+  ownerUid        String               // TeamSpeak client UID
+  ownerNickname   String               // Snapshot at creation time
+  createdAt       DateTime             @default(now())
+  lastActiveAt    DateTime             @default(now())
+  emptySince      DateTime?
+  deleteAt        DateTime?
+  status          ChannelStatus        @default(ACTIVE)
+
+  @@index([status])
+  @@index([deleteAt])
+  @@index([tsChannelId])
+  @@map("temporary_channels")
+}
+
+enum ChannelStatus {
+  ACTIVE
+  EMPTY
+  DELETED
+}
+
+// ─── Log Entries ─────────────────────────────────────────────────────────────
+
+model LogEntry {
+  id          Int       @id @default(autoincrement())
+  timestamp   DateTime  @default(now())
+  level       LogLevel  @default(INFO)
+  eventType   String
+  status      String    @default("success")
+  message     String
+  clientId    String?
+  channelId   String?
+  extra       String?   // JSON string for additional data
+
+  @@index([timestamp])
+  @@index([level])
+  @@index([eventType])
+  @@map("log_entries")
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+// ─── Clock/Date Settings ──────────────────────────────────────────────────────
+// (Stored as Settings keys, but documented here for reference)
+// Keys:
+//   clock_enabled          = "true"|"false"
+//   clock_channel_id       = "<ts channel id>"
+//   clock_format           = "🕒 ساعت ایران: HH:mm"
+//   clock_update_interval  = "60"  (seconds)
+//   date_enabled           = "true"|"false"
+//   date_channel_id        = "<ts channel id>"
+//   date_format            = "📅 تاریخ: YYYY/MM/DD"
+//   date_update_interval   = "60"
+//   poke_template          = "<bbcode>"
+//   temp_channel_enabled   = "true"|"false"

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>First-Time Setup — TS3 Bot Panel</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<style>
+  body { display: block; }
+  .setup-page {
+    min-height: 100vh;
+    background: var(--bg-primary);
+    background-image:
+      radial-gradient(ellipse at 10% 30%, rgba(0,180,255,0.08) 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 70%, rgba(0,255,136,0.06) 0%, transparent 50%);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 32px 16px 64px;
+  }
+  .setup-container { width: 100%; max-width: 780px; }
+  .setup-header { text-align: center; margin-bottom: 32px; }
+  .setup-header .icon {
+    width: 68px; height: 68px;
+    background: linear-gradient(135deg, var(--accent), #0050ff);
+    border-radius: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 32px; margin-bottom: 14px;
+  }
+  .setup-header h1 { font-size: 1.7rem; font-weight: 700; }
+  .setup-header p  { color: var(--text-secondary); margin-top: 6px; font-size: 0.95rem; }
+
+  .step-indicator {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; margin-bottom: 28px;
+  }
+  .step {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.82rem; color: var(--text-muted); font-weight: 500;
+  }
+  .step.active { color: var(--accent); }
+  .step.done   { color: var(--accent-green); }
+  .step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--bg-secondary); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 700;
+  }
+  .step.active .step-num { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+  .step.done   .step-num { border-color: var(--accent-green); background: rgba(0,255,136,0.1); color: var(--accent-green); }
+  .step-line { width: 40px; height: 2px; background: var(--border); margin: 0 4px; }
+  .step-line.done { background: var(--accent-green); }
+
+  .step-panel { display: none; }
+  .step-panel.active { display: block; }
+
+  .section-title {
+    font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text-muted);
+    padding: 0 0 10px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .ts-test-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .test-result { font-size: 0.85rem; }
+  .test-result.ok  { color: var(--accent-green); }
+  .test-result.err { color: var(--accent-red); }
+
+  .nav-buttons {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 24px;
+  }
+  .skip-link { font-size: 0.82rem; color: var(--text-muted); cursor: pointer; }
+  .skip-link:hover { color: var(--accent); }
+
+  .final-success {
+    text-align: center; padding: 40px 20px;
+  }
+  .final-success .big-icon { font-size: 64px; margin-bottom: 16px; }
+  .final-success h2 { font-size: 1.5rem; color: var(--accent-green); }
+  .final-success p  { color: var(--text-secondary); margin-top: 8px; }
+  .redirect-bar {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 16px; margin-top: 20px;
+    font-size: 0.85rem; color: var(--text-secondary);
+  }
+  .redirect-bar span { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="setup-page">
+<div class="setup-container">
+
+  <!-- Header -->
+  <div class="setup-header">
+    <div class="icon">🤖</div>
+    <h1>Welcome to TS3 Bot Panel</h1>
+    <p>Complete this one-time setup to connect your bot to TeamSpeak and create your admin account.</p>
+  </div>
+
+  <!-- Step Indicators -->
+  <div class="step-indicator">
+    <div class="step active" id="si-1"><div class="step-num">1</div><span>TeamSpeak</span></div>
+    <div class="step-line" id="sl-1"></div>
+    <div class="step" id="si-2"><div class="step-num">2</div><span>Admin Account</span></div>
+    <div class="step-line" id="sl-2"></div>
+    <div class="step" id="si-3"><div class="step-num">3</div><span>Channels</span></div>
+    <div class="step-line" id="sl-3"></div>
+    <div class="step" id="si-4"><div class="step-num">4</div><span>Done</span></div>
+  </div>
+
+  <!-- Global Alert -->
+  <div id="alert-global" class="alert"></div>
+
+  <!-- ── STEP 1: TeamSpeak Connection ─────────────────────────────────────── -->
+  <div class="step-panel active" id="step-1">
+    <div class="card">
+      <div class="section-title">🔌 TeamSpeak ServerQuery Connection</div>
+      <p class="fs-sm text-muted mb-2">
+        Enter your TeamSpeak 3 server's ServerQuery credentials. These are stored securely in the database.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-host">Server Host / IP <span>*</span></label>
+          <input id="ts-host" class="form-control" type="text" placeholder="ts.example.com or 1.2.3.4"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-query-port">ServerQuery Port <span>*</span></label>
+          <input id="ts-query-port" class="form-control" type="number" value="10011" min="1" max="65535"/>
+          <p class="form-hint">Default: 10011 (RAW protocol)</p>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-query-user">ServerQuery Username <span>*</span></label>
+          <input id="ts-query-user" class="form-control" type="text" placeholder="serveradmin"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-query-pass">ServerQuery Password <span>*</span></label>
+          <input id="ts-query-pass" class="form-control" type="password" placeholder="••••••••••"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-vsid">Virtual Server ID <span>*</span></label>
+          <input id="ts-vsid" class="form-control" type="number" value="1" min="1"/>
+          <p class="form-hint">Usually 1 for the first virtual server.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-bot-name">Bot Nickname</label>
+          <input id="ts-bot-name" class="form-control" type="text" value="TS3-Bot" placeholder="TS3-Bot"/>
+        </div>
+      </div>
+
+      <!-- Test connection -->
+      <div class="ts-test-row">
+        <button id="btn-test-ts" class="btn btn-outline btn-sm" type="button">🔌 Test Connection</button>
+        <span id="test-result" class="test-result"></span>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <div></div>
+      <button id="btn-next-1" class="btn btn-primary">Next: Admin Account →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: Admin Account ─────────────────────────────────────────────── -->
+  <div class="step-panel" id="step-2">
+    <div class="card">
+      <div class="section-title">👤 Create Admin Account</div>
+      <p class="fs-sm text-muted mb-2">This account will be used to log in to the web admin panel.</p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="admin-user">Admin Username <span>*</span></label>
+          <input id="admin-user" class="form-control" type="text" placeholder="admin" autocomplete="username"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="admin-pass">Password <span>*</span></label>
+          <input id="admin-pass" class="form-control" type="password" placeholder="Min. 8 characters" autocomplete="new-password"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="admin-pass2">Confirm Password <span>*</span></label>
+          <input id="admin-pass2" class="form-control" type="password" placeholder="Repeat password" autocomplete="new-password"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-outline" onclick="goStep(1)">← Back</button>
+      <button id="btn-next-2" class="btn btn-primary">Next: Channel Setup →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: Channel Configuration ────────────────────────────────────── -->
+  <div class="step-panel" id="step-3">
+    <div class="card">
+      <div class="section-title">📁 Temporary Channel Setup <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional — can configure later)</span></div>
+
+      <div class="form-group">
+        <div class="toggle-wrap">
+          <label class="toggle"><input type="checkbox" id="temp-enabled" checked/><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Enable Temporary Channel System</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="source-ch">Source Channel ID</label>
+          <input id="source-ch" class="form-control" type="text" placeholder="e.g. 12"/>
+          <p class="form-hint">Users join this channel to create a temp channel.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="parent-ch">Parent Channel ID</label>
+          <input id="parent-ch" class="form-control" type="text" placeholder="e.g. 5 (optional)"/>
+          <p class="form-hint">New channels appear under this parent.</p>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ch-name-prefix">Channel Name Prefix</label>
+          <input id="ch-name-prefix" class="form-control" type="text" placeholder="Gaming"/>
+          <p class="form-hint">Result: <strong id="name-preview-setup" style="color:var(--accent);">Gaming | Amir</strong></p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ch-group-id">Channel Group ID (Owner)</label>
+          <input id="ch-group-id" class="form-control" type="text" placeholder="e.g. 8 (optional)"/>
+          <p class="form-hint">Assigned to the channel creator.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">🕒 Clock &amp; Date Channels <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="clock-ch">Clock Channel ID</label>
+          <input id="clock-ch" class="form-control" type="text" placeholder="e.g. 20"/>
+          <p class="form-hint">Displays current Iran time. Leave empty to skip.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="date-ch">Date Channel ID</label>
+          <input id="date-ch" class="form-control" type="text" placeholder="e.g. 21"/>
+          <p class="form-hint">Displays current Jalali date. Leave empty to skip.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn btn-outline" onclick="goStep(2)">← Back</button>
+      <button id="btn-submit" class="btn btn-success">🚀 Complete Setup &amp; Start Bot</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 4: Done ──────────────────────────────────────────────────────── -->
+  <div class="step-panel" id="step-4">
+    <div class="card final-success">
+      <div class="big-icon">🎉</div>
+      <h2>Setup Complete!</h2>
+      <p>Your TS3 Bot is now connected and running.</p>
+      <div class="redirect-bar">
+        Redirecting to dashboard in <span id="countdown">5</span>s...
+        <a href="/dashboard" style="margin-left:8px;color:var(--accent);">Go now →</a>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /setup-container -->
+</div><!-- /setup-page -->
+
+<script src="/js/api.js"></script>
+<script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function showAlert(msg, type) {
+  const el = document.getElementById('alert-global');
+  el.className = 'alert alert-' + type + ' show';
+  el.textContent = msg;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (type === 'success') setTimeout(() => el.className = 'alert', 4000);
+}
+function hideAlert() { document.getElementById('alert-global').className = 'alert'; }
+
+// ── Step navigation ───────────────────────────────────────────────────────────
+let currentStep = 1;
+
+function goStep(n) {
+  document.getElementById('step-' + currentStep).classList.remove('active');
+  // Mark previous step done
+  if (n > currentStep) {
+    document.getElementById('si-' + currentStep).className = 'step done';
+    document.getElementById('sl-' + currentStep).className = 'step-line done';
+  }
+  currentStep = n;
+  document.getElementById('step-' + n).classList.add('active');
+  document.getElementById('si-' + n).className = 'step active';
+  hideAlert();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Channel name preview ──────────────────────────────────────────────────────
+document.getElementById('ch-name-prefix').addEventListener('input', () => {
+  const prefix = document.getElementById('ch-name-prefix').value || 'Channel';
+  document.getElementById('name-preview-setup').textContent = prefix + ' | Amir';
+});
+
+// ── Step 1: Test TS & Next ────────────────────────────────────────────────────
+document.getElementById('btn-test-ts').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-test-ts');
+  const result = document.getElementById('test-result');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Testing...';
+  result.textContent = '';
+
+  try {
+    const res = await API.post('/api/setup/test-ts', {
+      tsHost:            document.getElementById('ts-host').value.trim(),
+      tsQueryPort:       parseInt(document.getElementById('ts-query-port').value),
+      tsQueryUsername:   document.getElementById('ts-query-user').value.trim(),
+      tsQueryPassword:   document.getElementById('ts-query-pass').value,
+      tsVirtualServerId: parseInt(document.getElementById('ts-vsid').value),
+      tsBotNickname:     document.getElementById('ts-bot-name').value.trim(),
+    });
+    if (res.success) {
+      result.textContent = '✅ Connected successfully!'; result.className = 'test-result ok';
+    } else {
+      result.textContent = '❌ ' + res.message; result.className = 'test-result err';
+    }
+  } catch(err) {
+    result.textContent = '❌ ' + err.message; result.className = 'test-result err';
+  } finally {
+    btn.disabled = false; btn.innerHTML = '🔌 Test Connection';
+  }
+});
+
+document.getElementById('btn-next-1').addEventListener('click', () => {
+  const host  = document.getElementById('ts-host').value.trim();
+  const user  = document.getElementById('ts-query-user').value.trim();
+  const pass  = document.getElementById('ts-query-pass').value;
+  const port  = document.getElementById('ts-query-port').value;
+  if (!host) return showAlert('TeamSpeak host is required.', 'danger');
+  if (!user) return showAlert('ServerQuery username is required.', 'danger');
+  if (!pass) return showAlert('ServerQuery password is required.', 'danger');
+  if (!port || isNaN(parseInt(port))) return showAlert('Valid port is required.', 'danger');
+  hideAlert();
+  goStep(2);
+});
+
+// ── Step 2: Admin account validation ─────────────────────────────────────────
+document.getElementById('btn-next-2').addEventListener('click', () => {
+  const user  = document.getElementById('admin-user').value.trim();
+  const pass  = document.getElementById('admin-pass').value;
+  const pass2 = document.getElementById('admin-pass2').value;
+  if (user.length < 3) return showAlert('Admin username must be at least 3 characters.', 'danger');
+  if (pass.length < 8) return showAlert('Password must be at least 8 characters.', 'danger');
+  if (pass !== pass2)  return showAlert('Passwords do not match.', 'danger');
+  hideAlert();
+  goStep(3);
+});
+
+// ── Step 3: Submit ────────────────────────────────────────────────────────────
+document.getElementById('btn-submit').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Setting up...';
+
+  const payload = {
+    // TS
+    tsHost:            document.getElementById('ts-host').value.trim(),
+    tsQueryPort:       parseInt(document.getElementById('ts-query-port').value),
+    tsQueryUsername:   document.getElementById('ts-query-user').value.trim(),
+    tsQueryPassword:   document.getElementById('ts-query-pass').value,
+    tsVirtualServerId: parseInt(document.getElementById('ts-vsid').value),
+    tsBotNickname:     document.getElementById('ts-bot-name').value.trim() || 'TS3-Bot',
+    // Admin
+    adminUsername:        document.getElementById('admin-user').value.trim(),
+    adminPassword:        document.getElementById('admin-pass').value,
+    adminPasswordConfirm: document.getElementById('admin-pass2').value,
+    // Channels
+    tempChannelEnabled: document.getElementById('temp-enabled').checked,
+    sourceChannelId:    document.getElementById('source-ch').value.trim() || undefined,
+    parentChannelId:    document.getElementById('parent-ch').value.trim() || undefined,
+    channelNamePrefix:  document.getElementById('ch-name-prefix').value.trim() || 'Channel',
+    channelGroupId:     document.getElementById('ch-group-id').value.trim() || undefined,
+    clockChannelId:     document.getElementById('clock-ch').value.trim() || undefined,
+    dateChannelId:      document.getElementById('date-ch').value.trim() || undefined,
+  };
+
+  try {
+    await API.post('/api/setup/complete', payload);
+
+    // Mark steps done
+    goStep(4);
+    document.getElementById('si-4').className = 'step done';
+    document.getElementById('sl-3').className = 'step-line done';
+
+    // Countdown redirect
+    let count = 5;
+    const cd = document.getElementById('countdown');
+    const timer = setInterval(() => {
+      count--;
+      cd.textContent = count;
+      if (count <= 0) { clearInterval(timer); window.location.href = '/dashboard'; }
+    }, 1000);
+  } catch(err) {
+    showAlert('Setup failed: ' + err.message, 'danger');
+    btn.disabled = false;
+    btn.innerHTML = '🚀 Complete Setup & Start Bot';
+  }
+});
+</script>
+</body>
+</html>
