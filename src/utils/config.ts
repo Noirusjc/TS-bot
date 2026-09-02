@@ -1,23 +1,19 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-function requireEnv(key: string): string {
-  const val = process.env[key];
-  if (!val) throw new Error(`Missing required environment variable: ${key}`);
-  return val;
-}
-
 function optionalEnv(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue;
 }
 
 /**
- * Base config: only the two hard requirements for Railway deployment.
- * DATABASE_URL  — provided by Railway PostgreSQL service variable
- * SESSION_SECRET — set by the user in Railway environment variables
+ * Application configuration.
  *
- * TeamSpeak credentials are stored in the database after setup wizard
- * and loaded dynamically at runtime. They are NOT required as env vars.
+ * RAILWAY REQUIRED VARIABLES (set in Railway dashboard):
+ *   DATABASE_URL   — auto-provided when you link a PostgreSQL service
+ *   SESSION_SECRET — set manually (any long random string)
+ *
+ * All TeamSpeak credentials and bot settings are stored in the database
+ * after the first-time setup wizard. They are NOT env vars.
  */
 export interface BaseConfig {
   nodeEnv: string;
@@ -37,23 +33,31 @@ export interface TSConfig {
 }
 
 export function loadBaseConfig(): BaseConfig {
+  const databaseUrl = process.env.DATABASE_URL ?? '';
+
+  if (!databaseUrl) {
+    // Log a clear warning but do NOT throw — the server must still start
+    // so Railway can reach /health. The app will show an error on the UI.
+    console.error('[CONFIG] WARNING: DATABASE_URL is not set. Database features will not work.');
+  }
+
   return {
     nodeEnv: optionalEnv('NODE_ENV', 'production'),
+    // Railway sets PORT automatically — never hardcode
     port: parseInt(optionalEnv('PORT', '3000'), 10),
     appUrl: optionalEnv('APP_URL', ''),
-    databaseUrl: requireEnv('DATABASE_URL'),
-    sessionSecret: optionalEnv('SESSION_SECRET', generateFallbackSecret()),
+    databaseUrl,
+    sessionSecret: optionalEnv('SESSION_SECRET', generateFallbackSecret(databaseUrl)),
   };
 }
 
 /**
- * Fallback: if SESSION_SECRET is not set, derive one from DATABASE_URL
- * so sessions survive restarts on the same instance but differ per deployment.
- * This avoids a hard crash if the user forgets SESSION_SECRET, while still
- * being unique per project.
+ * Fallback secret derived from DATABASE_URL so sessions are stable across
+ * restarts even when SESSION_SECRET is not explicitly set.
+ * Unique per Railway project because each project has a different DB URL.
  */
-function generateFallbackSecret(): string {
-  const base = process.env.DATABASE_URL ?? 'fallback-secret-change-me';
+function generateFallbackSecret(seed: string): string {
+  const base = seed || 'ts3-bot-fallback-secret-please-set-SESSION_SECRET';
   return Buffer.from(base).toString('base64').slice(0, 64);
 }
 

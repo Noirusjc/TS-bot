@@ -3,8 +3,10 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "node dist/main.js"
+# Do NOT set startCommand here — it would override the Dockerfile CMD
+# and bypass scripts/start.sh (which runs prisma migrate deploy).
+# The CMD in the Dockerfile runs: sh ./scripts/start.sh
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 5
+restartPolicyMaxRetries = 10

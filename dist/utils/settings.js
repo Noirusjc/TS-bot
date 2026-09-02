@@ -11,16 +11,20 @@ exports.saveTSConfig = saveTSConfig;
 exports.getClockDateSettings = getClockDateSettings;
 exports.getPokeSettings = getPokeSettings;
 exports.ensureDefaultSettings = ensureDefaultSettings;
-let prismaInstance;
+let prismaInstance = null;
 function initSettings(prisma) {
     prismaInstance = prisma;
 }
 // ─── Generic get/set ─────────────────────────────────────────────────────────
 async function getSetting(key, fallback = '') {
+    if (!prismaInstance)
+        return fallback;
     const row = await prismaInstance.setting.findUnique({ where: { key } });
     return row?.value ?? fallback;
 }
 async function setSetting(key, value) {
+    if (!prismaInstance)
+        throw new Error('Settings not initialized — DB not connected yet');
     await prismaInstance.setting.upsert({
         where: { key },
         update: { value },
@@ -124,6 +128,8 @@ async function getPokeSettings() {
 }
 // ─── Ensure defaults exist (called on every startup) ─────────────────────────
 async function ensureDefaultSettings() {
+    if (!prismaInstance)
+        throw new Error('Settings not initialized');
     const defaults = {
         temp_channel_enabled: 'true',
         clock_enabled: 'false',

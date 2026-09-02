@@ -13,7 +13,6 @@ const connect_pg_simple_1 = __importDefault(require("connect-pg-simple"));
 const config_1 = require("../utils/config");
 const settings_1 = require("../utils/settings");
 const auth_1 = require("./middleware/auth");
-// Route factories
 const auth_2 = require("./routes/auth");
 const status_1 = require("./routes/status");
 const tempChannels_1 = require("./routes/tempChannels");
@@ -24,7 +23,7 @@ const settings_2 = require("./routes/settings");
 const setup_1 = require("./routes/setup");
 function createApp(prisma) {
     const app = (0, express_1.default)();
-    // ─── Security Headers ───────────────────────────────────────────────────────
+    // ─── Security Headers ────────────────────────────────────────────────────────
     app.use((0, helmet_1.default)({
         contentSecurityPolicy: {
             directives: {
@@ -37,39 +36,55 @@ function createApp(prisma) {
             },
         },
     }));
-    // Allow any origin in development, restrict in production via APP_URL
     const corsOrigin = config_1.config.appUrl && config_1.config.appUrl !== '' ? config_1.config.appUrl : true;
     app.use((0, cors_1.default)({ origin: corsOrigin, credentials: true }));
     app.use(express_1.default.json({ limit: '1mb' }));
     app.use(express_1.default.urlencoded({ extended: true }));
-    // ─── Session (stored in PostgreSQL) ────────────────────────────────────────
-    const PgStore = (0, connect_pg_simple_1.default)(express_session_1.default);
+    // ─── Health endpoint — registered BEFORE session middleware ──────────────────
+    // This guarantees /health always responds even if session store has issues.
+    app.get('/health', (_req, res) => {
+        res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
+    // ─── Session ─────────────────────────────────────────────────────────────────
+    // Use memory store as fallback if DATABASE_URL is missing (prevents crash)
+    let sessionStore;
+    if (config_1.config.databaseUrl) {
+        try {
+            const PgStore = (0, connect_pg_simple_1.default)(express_session_1.default);
+            sessionStore = new PgStore({
+                conString: config_1.config.databaseUrl,
+                tableName: 'session',
+                createTableIfMissing: true,
+            });
+        }
+        catch (err) {
+            console.error('[SESSION] Failed to create PG session store, falling back to memory store:', err.message);
+            sessionStore = undefined; // will use default memory store
+        }
+    }
+    else {
+        console.warn('[SESSION] DATABASE_URL not set — using in-memory session store (sessions lost on restart)');
+    }
     app.use((0, express_session_1.default)({
-        store: new PgStore({
-            conString: config_1.config.databaseUrl,
-            tableName: 'session',
-            createTableIfMissing: true,
-        }),
+        ...(sessionStore ? { store: sessionStore } : {}),
         secret: config_1.config.sessionSecret,
         resave: false,
         saveUninitialized: false,
         name: 'ts3bot.sid',
         cookie: {
             httpOnly: true,
+            // Only send secure cookies when actually behind HTTPS (Railway)
             secure: config_1.config.nodeEnv === 'production',
             sameSite: 'strict',
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+            maxAge: 24 * 60 * 60 * 1000,
         },
     }));
-    // ─── Static Files ───────────────────────────────────────────────────────────
-    app.use(express_1.default.static(path_1.default.join(__dirname, '../../public')));
-    // ─── Health Endpoint (public — required by Railway) ─────────────────────────
-    app.get('/health', (_req, res) => {
-        res.json({ status: 'ok', timestamp: new Date().toISOString() });
-    });
-    // ─── Setup API (public — only active before setup is complete) ──────────────
+    // ─── Static Files ─────────────────────────────────────────────────────────────
+    const publicDir = path_1.default.join(__dirname, '../../public');
+    app.use(express_1.default.static(publicDir));
+    // ─── Setup API (public — blocked after setup completes) ──────────────────────
     app.use('/api/setup', (0, setup_1.createSetupRouter)(prisma));
-    // ─── Protected API Routes ───────────────────────────────────────────────────
+    // ─── Protected API Routes ─────────────────────────────────────────────────────
     app.use('/api/auth', (0, auth_2.createAuthRouter)(prisma));
     app.use('/api/status', (0, status_1.createStatusRouter)(prisma));
     app.use('/api/temp-channels', (0, tempChannels_1.createTempChannelsRouter)(prisma));
@@ -77,55 +92,53 @@ function createApp(prisma) {
     app.use('/api/poke', (0, poke_1.createPokeRouter)());
     app.use('/api/logs', (0, logs_1.createLogsRouter)(prisma));
     app.use('/api/settings', (0, settings_2.createSettingsRouter)(prisma));
-    // ─── Setup Wizard Page (only available before setup) ───────────────────────
-    app.get('/setup', async (req, res) => {
+    // ─── Setup Wizard Page ────────────────────────────────────────────────────────
+    app.get('/setup', async (_req, res) => {
         try {
             const complete = await (0, settings_1.isSetupComplete)();
             if (complete)
                 return res.redirect('/login');
-            res.sendFile(path_1.default.join(__dirname, '../../public/pages/setup.html'));
         }
-        catch {
-            res.sendFile(path_1.default.join(__dirname, '../../public/pages/setup.html'));
-        }
+        catch { /* DB not ready yet — show setup page anyway */ }
+        res.sendFile(path_1.default.join(publicDir, 'pages/setup.html'));
     });
-    // ─── Login Page ─────────────────────────────────────────────────────────────
+    // ─── Login Page ───────────────────────────────────────────────────────────────
     app.get('/login', auth_1.requireGuest, (_req, res) => {
-        res.sendFile(path_1.default.join(__dirname, '../../public/pages/login.html'));
+        res.sendFile(path_1.default.join(publicDir, 'pages/login.html'));
     });
-    // ─── Protected Panel Pages ──────────────────────────────────────────────────
-    const protectedPages = ['/dashboard', '/temporary-channels', '/clock-date', '/poke-message', '/logs', '/settings'];
+    // ─── Protected Panel Pages ────────────────────────────────────────────────────
+    const protectedPages = [
+        '/dashboard', '/temporary-channels', '/clock-date',
+        '/poke-message', '/logs', '/settings',
+    ];
     for (const page of protectedPages) {
         app.get(page, auth_1.requireAuth, (_req, res) => {
-            res.sendFile(path_1.default.join(__dirname, `../../public/pages/${page.slice(1)}.html`));
+            res.sendFile(path_1.default.join(publicDir, `pages/${page.slice(1)}.html`));
         });
     }
-    // ─── Root: smart redirect ────────────────────────────────────────────────────
+    // ─── Root redirect ────────────────────────────────────────────────────────────
     app.get('/', async (req, res) => {
         try {
             const complete = await (0, settings_1.isSetupComplete)();
             if (!complete)
                 return res.redirect('/setup');
-            if (req.session?.userId)
-                return res.redirect('/dashboard');
-            res.redirect('/login');
         }
         catch {
-            res.redirect('/login');
+            return res.redirect('/setup');
         }
+        if (req.session?.userId)
+            return res.redirect('/dashboard');
+        res.redirect('/login');
     });
-    // ─── 404 ────────────────────────────────────────────────────────────────────
+    // ─── 404 ──────────────────────────────────────────────────────────────────────
     app.use((_req, res) => {
         res.status(404).json({ error: 'Not found' });
     });
-    // ─── Error Handler ───────────────────────────────────────────────────────────
+    // ─── Global error handler ─────────────────────────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     app.use((err, _req, res, _next) => {
-        const isDev = config_1.config.nodeEnv !== 'production';
-        res.status(500).json({
-            error: 'Internal server error',
-            ...(isDev && { details: err.message }),
-        });
+        console.error('[EXPRESS]', err.message);
+        res.status(500).json({ error: 'Internal server error' });
     });
     return app;
 }

@@ -1,10 +1,12 @@
 /**
- * Base config: only the two hard requirements for Railway deployment.
- * DATABASE_URL  — provided by Railway PostgreSQL service variable
- * SESSION_SECRET — set by the user in Railway environment variables
+ * Application configuration.
  *
- * TeamSpeak credentials are stored in the database after setup wizard
- * and loaded dynamically at runtime. They are NOT required as env vars.
+ * RAILWAY REQUIRED VARIABLES (set in Railway dashboard):
+ *   DATABASE_URL   — auto-provided when you link a PostgreSQL service
+ *   SESSION_SECRET — set manually (any long random string)
+ *
+ * All TeamSpeak credentials and bot settings are stored in the database
+ * after the first-time setup wizard. They are NOT env vars.
  */
 export interface BaseConfig {
     nodeEnv: string;

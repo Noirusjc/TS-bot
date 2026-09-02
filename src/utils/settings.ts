@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { ClockDateSettings, PokeSettings } from '../types';
 import type { TSConfig } from './config';
 
-let prismaInstance: PrismaClient;
+let prismaInstance: PrismaClient | null = null;
 
 export function initSettings(prisma: PrismaClient) {
   prismaInstance = prisma;
@@ -11,11 +11,13 @@ export function initSettings(prisma: PrismaClient) {
 // ─── Generic get/set ─────────────────────────────────────────────────────────
 
 export async function getSetting(key: string, fallback = ''): Promise<string> {
+  if (!prismaInstance) return fallback;
   const row = await prismaInstance.setting.findUnique({ where: { key } });
   return row?.value ?? fallback;
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
+  if (!prismaInstance) throw new Error('Settings not initialized — DB not connected yet');
   await prismaInstance.setting.upsert({
     where: { key },
     update: { value },
@@ -139,6 +141,7 @@ export async function getPokeSettings(): Promise<PokeSettings> {
 // ─── Ensure defaults exist (called on every startup) ─────────────────────────
 
 export async function ensureDefaultSettings(): Promise<void> {
+  if (!prismaInstance) throw new Error('Settings not initialized');
   const defaults: Record<string, string> = {
     temp_channel_enabled: 'true',
     clock_enabled: 'false',

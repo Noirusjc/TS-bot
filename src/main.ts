@@ -9,39 +9,72 @@ import { initTempChannelService, startCleanupScheduler, stopCleanupScheduler } f
 import { startClockDateService, stopClockDateService } from './services/clockDateService';
 import { createApp } from './api/server';
 
+// ─── Startup diagnostics ──────────────────────────────────────────────────────
+winstonLogger.info('╔═══════════════════════════════════════╗');
+winstonLogger.info('║     TS3 Management Bot — Starting     ║');
+winstonLogger.info('╚═══════════════════════════════════════╝');
+winstonLogger.info(`[STARTUP] NODE_ENV  : ${process.env.NODE_ENV ?? 'not set'}`);
+winstonLogger.info(`[STARTUP] PORT      : ${process.env.PORT ?? 'not set → will use 3000'}`);
+winstonLogger.info(`[STARTUP] DB present: ${process.env.DATABASE_URL ? 'yes' : 'NO — missing DATABASE_URL'}`);
+
 const prisma = new PrismaClient({ log: ['error', 'warn'] });
 
-async function main() {
-  winstonLogger.info('╔═══════════════════════════════════╗');
-  winstonLogger.info('║   TS3 Management Bot — Starting   ║');
-  winstonLogger.info('╚═══════════════════════════════════╝');
+// ─── Graceful shutdown helper ─────────────────────────────────────────────────
+function setupShutdownHandlers(closeServer: () => void) {
+  async function gracefulShutdown(signal: string) {
+    winstonLogger.info(`[APP] ${signal} received — shutting down...`);
+    closeServer();
+    stopClockDateService();
+    stopCleanupScheduler();
+    tsManager.destroy();
+    try { await prisma.$disconnect(); } catch { /* ignore */ }
+    winstonLogger.info('[APP] Shutdown complete.');
+    process.exit(0);
+  }
 
-  // ── 1. Connect to PostgreSQL ───────────────────────────────────────────────
+  process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
+  process.on('SIGINT',  () => { void gracefulShutdown('SIGINT'); });
+
+  process.on('unhandledRejection', (reason) => {
+    winstonLogger.error(`[APP] Unhandled rejection: ${String(reason)}`);
+    // Do NOT exit — keep the server alive
+  });
+  process.on('uncaughtException', (err) => {
+    winstonLogger.error(`[APP] Uncaught exception: ${err.message}`);
+    // Do NOT exit for non-fatal errors
+  });
+}
+
+// ─── Background initialisation (runs AFTER HTTP server is already up) ─────────
+async function initBackground(): Promise<void> {
+  // ── 1. Connect to PostgreSQL ────────────────────────────────────────────────
   try {
     await prisma.$connect();
     winstonLogger.info('[DB] Connected to PostgreSQL');
   } catch (err) {
     winstonLogger.error(`[DB] Failed to connect: ${(err as Error).message}`);
-    process.exit(1);
+    winstonLogger.warn('[DB] App will continue running — DB may become available later');
+    // Don't exit — Railway will restart if truly broken,
+    // but a temporary DB hiccup should not kill the process.
+    return;
   }
 
-  // ── 2. Initialize in-memory modules ───────────────────────────────────────
+  // ── 2. Boot in-memory modules ───────────────────────────────────────────────
   initDbLogger(prisma);
   initSettings(prisma);
   initTempChannelService(prisma);
 
-  // ── 3. Ensure all default settings rows exist in DB ────────────────────────
-  // This replaces the old seed script — runs automatically on every startup
+  // ── 3. Ensure default settings rows exist ───────────────────────────────────
   try {
     await ensureDefaultSettings();
-    winstonLogger.info('[DB] Default settings ensured');
+    winstonLogger.info('[DB] Default settings verified');
   } catch (err) {
-    winstonLogger.warn(`[DB] ensureDefaultSettings warning: ${(err as Error).message}`);
+    winstonLogger.warn(`[DB] ensureDefaultSettings: ${(err as Error).message}`);
   }
 
-  await dbLog({ eventType: 'APP_STARTED', message: 'Application starting', level: 'INFO' });
+  void dbLog({ eventType: 'APP_STARTED', message: 'Application started', level: 'INFO' });
 
-  // ── 4. Register TS lifecycle handlers (run every time a connection forms) ──
+  // ── 4. Register TS lifecycle hooks ──────────────────────────────────────────
   tsManager.onConnect(async (ts) => {
     try {
       await registerTSEvents(ts);
@@ -58,65 +91,54 @@ async function main() {
     stopCleanupScheduler();
   });
 
-  // ── 5. Conditionally connect to TeamSpeak ─────────────────────────────────
-  // If setup wizard not yet complete, skip connection.
-  // The setup wizard will call tsManager.reconfigure() when done.
-  const setupComplete = await isSetupComplete().catch(() => false);
+  // ── 5. Connect to TeamSpeak if configured ───────────────────────────────────
+  let setupComplete = false;
+  try {
+    setupComplete = await isSetupComplete();
+  } catch (err) {
+    winstonLogger.warn(`[SETUP] Could not read setup state: ${(err as Error).message}`);
+  }
+
   if (setupComplete) {
     const tsCfg = await getTSConfig().catch(() => null);
     if (tsCfg) {
-      winstonLogger.info('[TS] Setup complete — connecting to TeamSpeak...');
+      winstonLogger.info(`[TS] Connecting to ${tsCfg.host}:${tsCfg.queryPort} ...`);
       tsManager.connect().catch((err) => {
         winstonLogger.warn(`[TS] Initial connect error: ${(err as Error).message}`);
       });
     } else {
-      winstonLogger.warn('[TS] Setup marked complete but no TS config found in DB.');
+      winstonLogger.warn('[TS] Setup complete but no TS config found in DB — reconnect via Settings page');
     }
   } else {
-    winstonLogger.info('[SETUP] First-time setup not yet complete — waiting for setup wizard.');
-    winstonLogger.info('[SETUP] Open the app URL and complete the setup wizard to activate the bot.');
+    winstonLogger.info('[SETUP] Not yet configured — open the app and complete the setup wizard');
   }
-
-  // ── 6. Start web server ───────────────────────────────────────────────────
-  const app = createApp(prisma);
-  const port = config.port;
-
-  const server = app.listen(port, '0.0.0.0', () => {
-    winstonLogger.info(`[WEB] Admin panel listening on port ${port}`);
-    if (!setupComplete) {
-      winstonLogger.info('[WEB] → Open your Railway domain and complete the setup wizard');
-    }
-  });
-
-  // ── Graceful Shutdown ─────────────────────────────────────────────────────
-  async function gracefulShutdown(signal: string) {
-    winstonLogger.info(`[APP] Received ${signal} — shutting down...`);
-    await dbLog({ eventType: 'APP_STOPPING', message: `Stopping (${signal})`, level: 'INFO' });
-
-    server.close(async () => {
-      stopClockDateService();
-      stopCleanupScheduler();
-      tsManager.destroy();
-      await prisma.$disconnect();
-      winstonLogger.info('[APP] Shutdown complete.');
-      process.exit(0);
-    });
-
-    setTimeout(() => process.exit(1), 10_000);
-  }
-
-  process.on('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
-  process.on('SIGINT',  () => { void gracefulShutdown('SIGINT'); });
-
-  process.on('unhandledRejection', (reason) => {
-    winstonLogger.error(`[APP] Unhandled rejection: ${String(reason)}`);
-  });
-  process.on('uncaughtException', (err) => {
-    winstonLogger.error(`[APP] Uncaught exception: ${err.message}`);
-  });
 }
 
-main().catch((err) => {
-  winstonLogger.error(`[APP] Fatal startup error: ${(err as Error).message}`);
-  process.exit(1);
-});
+// ─── MAIN: Start HTTP server immediately, then init in background ─────────────
+(function start() {
+  const port = Number(process.env.PORT) || 3000;
+  const host = '0.0.0.0';
+
+  winstonLogger.info(`[HTTP] Binding to ${host}:${port} ...`);
+
+  const app = createApp(prisma);
+  const server = app.listen(port, host, () => {
+    winstonLogger.info(`[HTTP] Server listening on ${host}:${port}`);
+    winstonLogger.info('[READY] Web panel is reachable — GET /health should return 200');
+  });
+
+  server.on('error', (err) => {
+    winstonLogger.error(`[HTTP] Server error: ${err.message}`);
+    process.exit(1);
+  });
+
+  setupShutdownHandlers(() => {
+    server.close();
+  });
+
+  // Background init runs asynchronously — HTTP server is already live
+  initBackground().catch((err) => {
+    winstonLogger.error(`[STARTUP] Background init error: ${(err as Error).message}`);
+    // Keep the server running even if background init fails
+  });
+})();
