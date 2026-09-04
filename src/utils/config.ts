@@ -26,10 +26,13 @@ export interface BaseConfig {
 export interface TSConfig {
   host: string;
   queryPort: number;
+  serverPort: number;   // game port (e.g. 9987) — used to auto-detect virtual server
   username: string;
   password: string;
-  virtualServerId: number;
   botNickname: string;
+  // virtualServerId is detected automatically from serverPort; stored in DB
+  // but never required from the user
+  detectedVirtualServerId?: number;
 }
 
 export function loadBaseConfig(): BaseConfig {

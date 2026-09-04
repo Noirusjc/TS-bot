@@ -32,10 +32,7 @@
     display: flex; align-items: center; justify-content: center;
     gap: 0; margin-bottom: 28px;
   }
-  .step {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 0.82rem; color: var(--text-muted); font-weight: 500;
-  }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-muted); font-weight: 500; }
   .step.active { color: var(--accent); }
   .step.done   { color: var(--accent-green); }
   .step-num {
@@ -55,24 +52,20 @@
   .section-title {
     font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
     letter-spacing: 1px; color: var(--text-muted);
-    padding: 0 0 10px; margin-bottom: 4px;
-    border-bottom: 1px solid var(--border); margin-bottom: 16px;
+    border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 16px;
   }
-  .ts-test-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .ts-test-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
   .test-result { font-size: 0.85rem; }
   .test-result.ok  { color: var(--accent-green); }
   .test-result.err { color: var(--accent-red); }
-
-  .nav-buttons {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-top: 24px;
+  .detected-box {
+    margin-top: 10px; padding: 10px 14px;
+    background: rgba(0,255,136,0.07); border: 1px solid rgba(0,255,136,0.25);
+    border-radius: var(--radius); font-size: 0.84rem; color: var(--accent-green);
+    display: none;
   }
-  .skip-link { font-size: 0.82rem; color: var(--text-muted); cursor: pointer; }
-  .skip-link:hover { color: var(--accent); }
-
-  .final-success {
-    text-align: center; padding: 40px 20px;
-  }
+  .nav-buttons { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; }
+  .final-success { text-align: center; padding: 40px 20px; }
   .final-success .big-icon { font-size: 64px; margin-bottom: 16px; }
   .final-success h2 { font-size: 1.5rem; color: var(--accent-green); }
   .final-success p  { color: var(--text-secondary); margin-top: 8px; }
@@ -88,14 +81,12 @@
 <div class="setup-page">
 <div class="setup-container">
 
-  <!-- Header -->
   <div class="setup-header">
     <div class="icon">🤖</div>
     <h1>Welcome to TS3 Bot Panel</h1>
     <p>Complete this one-time setup to connect your bot to TeamSpeak and create your admin account.</p>
   </div>
 
-  <!-- Step Indicators -->
   <div class="step-indicator">
     <div class="step active" id="si-1"><div class="step-num">1</div><span>TeamSpeak</span></div>
     <div class="step-line" id="sl-1"></div>
@@ -106,15 +97,15 @@
     <div class="step" id="si-4"><div class="step-num">4</div><span>Done</span></div>
   </div>
 
-  <!-- Global Alert -->
   <div id="alert-global" class="alert"></div>
 
-  <!-- ── STEP 1: TeamSpeak Connection ─────────────────────────────────────── -->
+  <!-- ── STEP 1: TeamSpeak Connection ──────────────────────────────────────── -->
   <div class="step-panel active" id="step-1">
     <div class="card">
       <div class="section-title">🔌 TeamSpeak ServerQuery Connection</div>
       <p class="fs-sm text-muted mb-2">
-        Enter your TeamSpeak 3 server's ServerQuery credentials. These are stored securely in the database.
+        Enter your TeamSpeak 3 server details. The bot will automatically find and connect to the
+        correct virtual server — <strong>no Virtual Server ID needed</strong>.
       </p>
 
       <div class="form-row">
@@ -123,11 +114,24 @@
           <input id="ts-host" class="form-control" type="text" placeholder="ts.example.com or 1.2.3.4"/>
         </div>
         <div class="form-group">
-          <label class="form-label" for="ts-query-port">ServerQuery Port <span>*</span></label>
-          <input id="ts-query-port" class="form-control" type="number" value="10011" min="1" max="65535"/>
-          <p class="form-hint">Default: 10011 (RAW protocol)</p>
+          <label class="form-label" for="ts-server-port">TeamSpeak Server Port <span>*</span></label>
+          <input id="ts-server-port" class="form-control" type="number" value="9987" min="1" max="65535"/>
+          <p class="form-hint">The port clients connect to (default: 9987). Used to auto-select the correct virtual server.</p>
         </div>
       </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-query-port">ServerQuery Port <span>*</span></label>
+          <input id="ts-query-port" class="form-control" type="number" value="10011" min="1" max="65535"/>
+          <p class="form-hint">Admin query port (default: 10011). Different from the server port above.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-bot-name">Bot Nickname</label>
+          <input id="ts-bot-name" class="form-control" type="text" value="TS3-Bot" placeholder="TS3-Bot"/>
+        </div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="ts-query-user">ServerQuery Username <span>*</span></label>
@@ -138,22 +142,18 @@
           <input id="ts-query-pass" class="form-control" type="password" placeholder="••••••••••"/>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="ts-vsid">Virtual Server ID <span>*</span></label>
-          <input id="ts-vsid" class="form-control" type="number" value="1" min="1"/>
-          <p class="form-hint">Usually 1 for the first virtual server.</p>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="ts-bot-name">Bot Nickname</label>
-          <input id="ts-bot-name" class="form-control" type="text" value="TS3-Bot" placeholder="TS3-Bot"/>
-        </div>
-      </div>
 
       <!-- Test connection -->
       <div class="ts-test-row">
         <button id="btn-test-ts" class="btn btn-outline btn-sm" type="button">🔌 Test Connection</button>
         <span id="test-result" class="test-result"></span>
+      </div>
+      <!-- Auto-detection result box -->
+      <div class="detected-box" id="detected-box">
+        <strong>✅ Auto-detected:</strong>
+        Server: <span id="detected-name"></span> &nbsp;|&nbsp;
+        Virtual Server ID: <span id="detected-vsid"></span>
+        <span class="text-muted fs-sm" style="margin-left:6px;">(stored automatically — no action needed)</span>
       </div>
     </div>
 
@@ -167,8 +167,7 @@
   <div class="step-panel" id="step-2">
     <div class="card">
       <div class="section-title">👤 Create Admin Account</div>
-      <p class="fs-sm text-muted mb-2">This account will be used to log in to the web admin panel.</p>
-
+      <p class="fs-sm text-muted mb-2">This account is used to log in to the web admin panel.</p>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="admin-user">Admin Username <span>*</span></label>
@@ -184,7 +183,6 @@
         </div>
       </div>
     </div>
-
     <div class="nav-buttons">
       <button class="btn btn-outline" onclick="goStep(1)">← Back</button>
       <button id="btn-next-2" class="btn btn-primary">Next: Channel Setup →</button>
@@ -194,15 +192,13 @@
   <!-- ── STEP 3: Channel Configuration ────────────────────────────────────── -->
   <div class="step-panel" id="step-3">
     <div class="card">
-      <div class="section-title">📁 Temporary Channel Setup <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional — can configure later)</span></div>
-
+      <div class="section-title">📁 Temporary Channel Setup <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional — configure later)</span></div>
       <div class="form-group">
         <div class="toggle-wrap">
           <label class="toggle"><input type="checkbox" id="temp-enabled" checked/><span class="toggle-slider"></span></label>
           <span class="toggle-label">Enable Temporary Channel System</span>
         </div>
       </div>
-
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="source-ch">Source Channel ID</label>
@@ -228,7 +224,6 @@
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="section-title">🕒 Clock &amp; Date Channels <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></div>
       <div class="form-row">
@@ -244,19 +239,19 @@
         </div>
       </div>
     </div>
-
     <div class="nav-buttons">
       <button class="btn btn-outline" onclick="goStep(2)">← Back</button>
       <button id="btn-submit" class="btn btn-success">🚀 Complete Setup &amp; Start Bot</button>
     </div>
   </div>
 
-  <!-- ── STEP 4: Done ──────────────────────────────────────────────────────── -->
+  <!-- ── STEP 4: Done ───────────────────────────────────────────────────────── -->
   <div class="step-panel" id="step-4">
     <div class="card final-success">
       <div class="big-icon">🎉</div>
       <h2>Setup Complete!</h2>
       <p>Your TS3 Bot is now connected and running.</p>
+      <p id="setup-server-name" class="text-accent fw-600 mt-2"></p>
       <div class="redirect-bar">
         Redirecting to dashboard in <span id="countdown">5</span>s...
         <a href="/dashboard" style="margin-left:8px;color:var(--accent);">Go now →</a>
@@ -264,12 +259,11 @@
     </div>
   </div>
 
-</div><!-- /setup-container -->
-</div><!-- /setup-page -->
+</div>
+</div>
 
 <script src="/js/api.js"></script>
 <script>
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function showAlert(msg, type) {
   const el = document.getElementById('alert-global');
   el.className = 'alert alert-' + type + ' show';
@@ -279,12 +273,9 @@ function showAlert(msg, type) {
 }
 function hideAlert() { document.getElementById('alert-global').className = 'alert'; }
 
-// ── Step navigation ───────────────────────────────────────────────────────────
 let currentStep = 1;
-
 function goStep(n) {
   document.getElementById('step-' + currentStep).classList.remove('active');
-  // Mark previous step done
   if (n > currentStep) {
     document.getElementById('si-' + currentStep).className = 'step done';
     document.getElementById('sl-' + currentStep).className = 'step-line done';
@@ -296,54 +287,74 @@ function goStep(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ── Channel name preview ──────────────────────────────────────────────────────
+// Channel name preview
 document.getElementById('ch-name-prefix').addEventListener('input', () => {
   const prefix = document.getElementById('ch-name-prefix').value || 'Channel';
   document.getElementById('name-preview-setup').textContent = prefix + ' | Amir';
 });
 
-// ── Step 1: Test TS & Next ────────────────────────────────────────────────────
+// ── Test Connection ──────────────────────────────────────────────────────────
 document.getElementById('btn-test-ts').addEventListener('click', async () => {
   const btn = document.getElementById('btn-test-ts');
-  const result = document.getElementById('test-result');
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Testing...';
-  result.textContent = '';
+  const resultEl = document.getElementById('test-result');
+  const detectedBox = document.getElementById('detected-box');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Testing...';
+  resultEl.textContent = '';
+  detectedBox.style.display = 'none';
 
   try {
     const res = await API.post('/api/setup/test-ts', {
-      tsHost:            document.getElementById('ts-host').value.trim(),
-      tsQueryPort:       parseInt(document.getElementById('ts-query-port').value),
-      tsQueryUsername:   document.getElementById('ts-query-user').value.trim(),
-      tsQueryPassword:   document.getElementById('ts-query-pass').value,
-      tsVirtualServerId: parseInt(document.getElementById('ts-vsid').value),
-      tsBotNickname:     document.getElementById('ts-bot-name').value.trim(),
+      tsHost:          document.getElementById('ts-host').value.trim(),
+      tsServerPort:    parseInt(document.getElementById('ts-server-port').value),
+      tsQueryPort:     parseInt(document.getElementById('ts-query-port').value),
+      tsQueryUsername: document.getElementById('ts-query-user').value.trim(),
+      tsQueryPassword: document.getElementById('ts-query-pass').value,
+      tsBotNickname:   document.getElementById('ts-bot-name').value.trim() || 'TS3-Bot',
     });
+
     if (res.success) {
-      result.textContent = '✅ Connected successfully!'; result.className = 'test-result ok';
+      resultEl.textContent = '✅ Connection successful!';
+      resultEl.className = 'test-result ok';
+      // Show auto-detected info
+      if (res.serverName || res.detectedVirtualServerId) {
+        document.getElementById('detected-name').textContent = res.serverName || '—';
+        document.getElementById('detected-vsid').textContent = res.detectedVirtualServerId ?? '—';
+        detectedBox.style.display = 'block';
+      }
     } else {
-      result.textContent = '❌ ' + res.message; result.className = 'test-result err';
+      resultEl.textContent = '❌ ' + res.message;
+      resultEl.className = 'test-result err';
     }
   } catch(err) {
-    result.textContent = '❌ ' + err.message; result.className = 'test-result err';
+    resultEl.textContent = '❌ ' + err.message;
+    resultEl.className = 'test-result err';
   } finally {
-    btn.disabled = false; btn.innerHTML = '🔌 Test Connection';
+    btn.disabled = false;
+    btn.innerHTML = '🔌 Test Connection';
   }
 });
 
+// ── Step 1 → Next ────────────────────────────────────────────────────────────
 document.getElementById('btn-next-1').addEventListener('click', () => {
-  const host  = document.getElementById('ts-host').value.trim();
-  const user  = document.getElementById('ts-query-user').value.trim();
-  const pass  = document.getElementById('ts-query-pass').value;
-  const port  = document.getElementById('ts-query-port').value;
-  if (!host) return showAlert('TeamSpeak host is required.', 'danger');
-  if (!user) return showAlert('ServerQuery username is required.', 'danger');
-  if (!pass) return showAlert('ServerQuery password is required.', 'danger');
-  if (!port || isNaN(parseInt(port))) return showAlert('Valid port is required.', 'danger');
+  const host       = document.getElementById('ts-host').value.trim();
+  const serverPort = document.getElementById('ts-server-port').value;
+  const queryPort  = document.getElementById('ts-query-port').value;
+  const user       = document.getElementById('ts-query-user').value.trim();
+  const pass       = document.getElementById('ts-query-pass').value;
+
+  if (!host)       return showAlert('TeamSpeak host is required.', 'danger');
+  if (!serverPort || isNaN(parseInt(serverPort))) return showAlert('TeamSpeak server port is required (e.g. 9987).', 'danger');
+  if (!queryPort  || isNaN(parseInt(queryPort)))  return showAlert('ServerQuery port is required (e.g. 10011).', 'danger');
+  if (!user)       return showAlert('ServerQuery username is required.', 'danger');
+  if (!pass)       return showAlert('ServerQuery password is required.', 'danger');
+
   hideAlert();
   goStep(2);
 });
 
-// ── Step 2: Admin account validation ─────────────────────────────────────────
+// ── Step 2 → Next ────────────────────────────────────────────────────────────
 document.getElementById('btn-next-2').addEventListener('click', () => {
   const user  = document.getElementById('admin-user').value.trim();
   const pass  = document.getElementById('admin-pass').value;
@@ -355,43 +366,46 @@ document.getElementById('btn-next-2').addEventListener('click', () => {
   goStep(3);
 });
 
-// ── Step 3: Submit ────────────────────────────────────────────────────────────
+// ── Step 3 → Submit ──────────────────────────────────────────────────────────
 document.getElementById('btn-submit').addEventListener('click', async () => {
   const btn = document.getElementById('btn-submit');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Setting up...';
+  btn.innerHTML = '<span class="spinner"></span> Connecting & saving...';
 
   const payload = {
-    // TS
-    tsHost:            document.getElementById('ts-host').value.trim(),
-    tsQueryPort:       parseInt(document.getElementById('ts-query-port').value),
-    tsQueryUsername:   document.getElementById('ts-query-user').value.trim(),
-    tsQueryPassword:   document.getElementById('ts-query-pass').value,
-    tsVirtualServerId: parseInt(document.getElementById('ts-vsid').value),
-    tsBotNickname:     document.getElementById('ts-bot-name').value.trim() || 'TS3-Bot',
+    // TeamSpeak — no Virtual Server ID
+    tsHost:          document.getElementById('ts-host').value.trim(),
+    tsServerPort:    parseInt(document.getElementById('ts-server-port').value),
+    tsQueryPort:     parseInt(document.getElementById('ts-query-port').value),
+    tsQueryUsername: document.getElementById('ts-query-user').value.trim(),
+    tsQueryPassword: document.getElementById('ts-query-pass').value,
+    tsBotNickname:   document.getElementById('ts-bot-name').value.trim() || 'TS3-Bot',
     // Admin
     adminUsername:        document.getElementById('admin-user').value.trim(),
     adminPassword:        document.getElementById('admin-pass').value,
     adminPasswordConfirm: document.getElementById('admin-pass2').value,
     // Channels
     tempChannelEnabled: document.getElementById('temp-enabled').checked,
-    sourceChannelId:    document.getElementById('source-ch').value.trim() || undefined,
-    parentChannelId:    document.getElementById('parent-ch').value.trim() || undefined,
+    sourceChannelId:    document.getElementById('source-ch').value.trim()   || undefined,
+    parentChannelId:    document.getElementById('parent-ch').value.trim()   || undefined,
     channelNamePrefix:  document.getElementById('ch-name-prefix').value.trim() || 'Channel',
     channelGroupId:     document.getElementById('ch-group-id').value.trim() || undefined,
-    clockChannelId:     document.getElementById('clock-ch').value.trim() || undefined,
-    dateChannelId:      document.getElementById('date-ch').value.trim() || undefined,
+    clockChannelId:     document.getElementById('clock-ch').value.trim()    || undefined,
+    dateChannelId:      document.getElementById('date-ch').value.trim()     || undefined,
   };
 
   try {
-    await API.post('/api/setup/complete', payload);
+    const res = await API.post('/api/setup/complete', payload);
 
-    // Mark steps done
+    // Show server name on success screen
+    if (res.serverName) {
+      document.getElementById('setup-server-name').textContent = '🖥️ Connected to: ' + res.serverName;
+    }
+
     goStep(4);
     document.getElementById('si-4').className = 'step done';
     document.getElementById('sl-3').className = 'step-line done';
 
-    // Countdown redirect
     let count = 5;
     const cd = document.getElementById('countdown');
     const timer = setInterval(() => {

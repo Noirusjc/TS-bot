@@ -53,36 +53,43 @@ export async function markSetupComplete(): Promise<void> {
  * Returns null when setup has not been completed yet.
  */
 export async function getTSConfig(): Promise<TSConfig | null> {
-  const [host, port, username, password, vsId, nickname] = await Promise.all([
+  const [host, queryPort, serverPort, username, password, nickname, detectedVsId] = await Promise.all([
     getSetting('ts_host', ''),
     getSetting('ts_query_port', '10011'),
+    getSetting('ts_server_port', '9987'),
     getSetting('ts_query_username', ''),
     getSetting('ts_query_password', ''),
-    getSetting('ts_virtual_server_id', '1'),
     getSetting('ts_bot_nickname', 'TS3-Bot'),
+    getSetting('ts_detected_vsid', ''),
   ]);
 
   if (!host || !username || !password) return null;
 
   return {
     host,
-    queryPort: parseInt(port, 10) || 10011,
+    queryPort:   parseInt(queryPort, 10)  || 10011,
+    serverPort:  parseInt(serverPort, 10) || 9987,
     username,
     password,
-    virtualServerId: parseInt(vsId, 10) || 1,
     botNickname: nickname || 'TS3-Bot',
+    detectedVirtualServerId: detectedVsId ? parseInt(detectedVsId, 10) : undefined,
   };
 }
 
 export async function saveTSConfig(cfg: TSConfig): Promise<void> {
-  await setSettings({
-    ts_host: cfg.host,
-    ts_query_port: String(cfg.queryPort),
-    ts_query_username: cfg.username,
-    ts_query_password: cfg.password,
-    ts_virtual_server_id: String(cfg.virtualServerId),
-    ts_bot_nickname: cfg.botNickname,
-  });
+  const pairs: Record<string, string> = {
+    ts_host:            cfg.host,
+    ts_query_port:      String(cfg.queryPort),
+    ts_server_port:     String(cfg.serverPort),
+    ts_query_username:  cfg.username,
+    ts_query_password:  cfg.password,
+    ts_bot_nickname:    cfg.botNickname,
+  };
+  // Persist detected virtual server ID if available
+  if (cfg.detectedVirtualServerId !== undefined) {
+    pairs['ts_detected_vsid'] = String(cfg.detectedVirtualServerId);
+  }
+  await setSettings(pairs);
 }
 
 // ─── Clock / Date settings ───────────────────────────────────────────────────

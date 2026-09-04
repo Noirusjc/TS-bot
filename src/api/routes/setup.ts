@@ -16,12 +16,10 @@ import type { TSConfig } from '../../utils/config';
 export function createSetupRouter(prisma: PrismaClient): Router {
   const router = Router();
 
-  // ── Guard: block all setup routes once setup is complete ──────────────────
+  // ── Guard: block once setup is complete ───────────────────────────────────
   router.use(async (_req: Request, res: Response, next: NextFunction) => {
     const complete = await isSetupComplete().catch(() => false);
-    if (complete) {
-      return res.status(403).json({ error: 'Setup has already been completed.' });
-    }
+    if (complete) return res.status(403).json({ error: 'Setup has already been completed.' });
     next();
   });
 
@@ -32,49 +30,44 @@ export function createSetupRouter(prisma: PrismaClient): Router {
   });
 
   // ── POST /api/setup/test-ts ───────────────────────────────────────────────
-  // Test a TS connection without saving anything.
+  // Test the connection and auto-detect virtual server — nothing is saved.
   router.post(
     '/test-ts',
     [
       body('tsHost').trim().notEmpty().withMessage('Host required'),
-      body('tsQueryPort').isInt({ min: 1, max: 65535 }).withMessage('Valid port required'),
-      body('tsQueryUsername').trim().notEmpty().withMessage('Username required'),
-      body('tsQueryPassword').notEmpty().withMessage('Password required'),
-      body('tsVirtualServerId').isInt({ min: 1 }).withMessage('Virtual server ID required'),
+      body('tsServerPort').isInt({ min: 1, max: 65535 }).withMessage('Valid TeamSpeak server port required (e.g. 9987)'),
+      body('tsQueryPort').isInt({ min: 1, max: 65535 }).withMessage('Valid ServerQuery port required (e.g. 10011)'),
+      body('tsQueryUsername').trim().notEmpty().withMessage('ServerQuery username required'),
+      body('tsQueryPassword').notEmpty().withMessage('ServerQuery password required'),
     ],
     async (req: Request, res: Response) => {
       const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ error: errors.array()[0].msg });
-      }
+      if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
 
       const cfg: TSConfig = {
-        host: String(req.body.tsHost),
-        queryPort: parseInt(req.body.tsQueryPort, 10),
-        username: String(req.body.tsQueryUsername),
-        password: String(req.body.tsQueryPassword),
-        virtualServerId: parseInt(req.body.tsVirtualServerId, 10),
+        host:       String(req.body.tsHost),
+        serverPort: parseInt(req.body.tsServerPort, 10),
+        queryPort:  parseInt(req.body.tsQueryPort, 10),
+        username:   String(req.body.tsQueryUsername),
+        password:   String(req.body.tsQueryPassword),
         botNickname: String(req.body.tsBotNickname || 'TS3-Bot'),
       };
 
-      // Use the static method on the class directly
       const result = await TSConnectionManager.testConnection(cfg);
       return res.json(result);
     }
   );
 
   // ── POST /api/setup/complete ──────────────────────────────────────────────
-  // Full setup: saves all config, creates admin user, marks setup done,
-  // triggers live bot connection.
   router.post(
     '/complete',
     [
-      // TeamSpeak
+      // TeamSpeak — no virtualServerId required
       body('tsHost').trim().notEmpty().withMessage('TeamSpeak host is required'),
-      body('tsQueryPort').isInt({ min: 1, max: 65535 }).withMessage('Valid ServerQuery port required'),
+      body('tsServerPort').isInt({ min: 1, max: 65535 }).withMessage('TeamSpeak server port required (e.g. 9987)'),
+      body('tsQueryPort').isInt({ min: 1, max: 65535 }).withMessage('ServerQuery port required (e.g. 10011)'),
       body('tsQueryUsername').trim().notEmpty().withMessage('ServerQuery username required'),
       body('tsQueryPassword').notEmpty().withMessage('ServerQuery password required'),
-      body('tsVirtualServerId').isInt({ min: 1 }).withMessage('Virtual server ID required'),
       // Admin account
       body('adminUsername').trim().isLength({ min: 3 }).withMessage('Admin username must be at least 3 characters'),
       body('adminPassword').isLength({ min: 8 }).withMessage('Admin password must be at least 8 characters'),
@@ -82,7 +75,7 @@ export function createSetupRouter(prisma: PrismaClient): Router {
         if (val !== r.body.adminPassword) throw new Error('Passwords do not match');
         return true;
       }),
-      // Optional channel IDs (must be numeric if provided)
+      // Optional channel IDs
       body('sourceChannelId').optional({ checkFalsy: true }).isNumeric().withMessage('Source channel ID must be numeric'),
       body('parentChannelId').optional({ checkFalsy: true }).isNumeric().withMessage('Parent channel ID must be numeric'),
       body('clockChannelId').optional({ checkFalsy: true }).isNumeric().withMessage('Clock channel ID must be numeric'),
@@ -91,38 +84,42 @@ export function createSetupRouter(prisma: PrismaClient): Router {
     ],
     async (req: Request, res: Response) => {
       const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ error: errors.array()[0].msg });
-      }
+      if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
 
       const b = req.body as Record<string, unknown>;
 
       try {
-        // ── 1. Build TS config and run a live connection test ─────────────
+        // ── 1. Build TS config (no virtualServerId needed from user) ──────
         const tsCfg: TSConfig = {
-          host: String(b.tsHost),
-          queryPort: parseInt(String(b.tsQueryPort), 10),
-          username: String(b.tsQueryUsername),
-          password: String(b.tsQueryPassword),
-          virtualServerId: parseInt(String(b.tsVirtualServerId), 10),
+          host:       String(b.tsHost),
+          serverPort: parseInt(String(b.tsServerPort), 10),
+          queryPort:  parseInt(String(b.tsQueryPort), 10),
+          username:   String(b.tsQueryUsername),
+          password:   String(b.tsQueryPassword),
           botNickname: b.tsBotNickname ? String(b.tsBotNickname) : 'TS3-Bot',
         };
 
+        // ── 2. Test connection and auto-detect virtual server ID ──────────
         const testResult = await TSConnectionManager.testConnection(tsCfg);
         if (!testResult.success) {
           return res.status(400).json({
-            error: `TeamSpeak connection test failed: ${testResult.message}`,
+            error: `TeamSpeak connection failed: ${testResult.message}`,
             field: 'ts',
           });
         }
 
-        // ── 2. Ensure all default settings rows exist ─────────────────────
+        // Store the detected virtual server ID for fast reconnects
+        if (testResult.detectedVirtualServerId) {
+          tsCfg.detectedVirtualServerId = testResult.detectedVirtualServerId;
+        }
+
+        // ── 3. Ensure default settings rows ───────────────────────────────
         await ensureDefaultSettings();
 
-        // ── 3. Save TeamSpeak credentials to database ─────────────────────
+        // ── 4. Save TS config ─────────────────────────────────────────────
         await saveTSConfig(tsCfg);
 
-        // ── 4. Create admin user (hash password) ──────────────────────────
+        // ── 5. Create admin user ──────────────────────────────────────────
         const adminUsername = String(b.adminUsername);
         const adminPassword = String(b.adminPassword);
         const passwordHash = await bcrypt.hash(adminPassword, 12);
@@ -133,62 +130,57 @@ export function createSetupRouter(prisma: PrismaClient): Router {
           create: { username: adminUsername, passwordHash },
         });
 
-        // ── 5. Save / update default temp channel rule ────────────────────
+        // ── 6. Save / update default temp channel rule ────────────────────
         const tempEnabled = b.tempChannelEnabled === true || b.tempChannelEnabled === 'true';
-        const sourceChannelId = b.sourceChannelId ? String(b.sourceChannelId) : '0';
-        const parentChannelId = b.parentChannelId ? String(b.parentChannelId) : null;
-        const channelNamePrefix = b.channelNamePrefix ? String(b.channelNamePrefix) : 'Channel';
-        const channelGroupId = b.channelGroupId ? String(b.channelGroupId) : null;
-
         const existingRule = await prisma.temporaryChannelRule.findFirst();
+        const ruleData = {
+          enabled:          tempEnabled,
+          sourceChannelId:  b.sourceChannelId ? String(b.sourceChannelId) : '0',
+          parentChannelId:  b.parentChannelId ? String(b.parentChannelId) : null,
+          channelNamePrefix:b.channelNamePrefix ? String(b.channelNamePrefix) : 'Channel',
+          channelGroupId:   b.channelGroupId ? String(b.channelGroupId) : null,
+        };
+
         if (existingRule) {
-          await prisma.temporaryChannelRule.update({
-            where: { id: existingRule.id },
-            data: { enabled: tempEnabled, sourceChannelId, parentChannelId, channelNamePrefix, channelGroupId },
-          });
+          await prisma.temporaryChannelRule.update({ where: { id: existingRule.id }, data: ruleData });
         } else {
-          await prisma.temporaryChannelRule.create({
-            data: {
-              name: 'Default Rule',
-              enabled: tempEnabled,
-              sourceChannelId,
-              parentChannelId,
-              channelNamePrefix,
-              channelGroupId,
-            },
-          });
+          await prisma.temporaryChannelRule.create({ data: { name: 'Default Rule', ...ruleData } });
         }
 
-        // ── 6. Save optional clock/date channel IDs ───────────────────────
+        // ── 7. Save optional clock/date channel IDs ───────────────────────
         const extra: Record<string, string> = {};
         if (b.clockChannelId) { extra['clock_channel_id'] = String(b.clockChannelId); extra['clock_enabled'] = 'true'; }
         if (b.dateChannelId)  { extra['date_channel_id']  = String(b.dateChannelId);  extra['date_enabled']  = 'true'; }
         if (Object.keys(extra).length > 0) await setSettings(extra);
 
-        // ── 7. Mark setup as complete (disables /setup permanently) ───────
+        // ── 8. Mark setup complete ────────────────────────────────────────
         await markSetupComplete();
 
         void dbLog({
           eventType: 'SETUP_COMPLETED',
-          message: `Setup completed. Admin: ${adminUsername}, TS: ${tsCfg.host}`,
+          message: `Setup complete. Admin: ${adminUsername}, TS: ${tsCfg.host}:${tsCfg.serverPort}, VS ID: ${tsCfg.detectedVirtualServerId ?? 'auto'}`,
           level: 'INFO',
         });
 
-        // ── 8. Start bot services in background ───────────────────────────
-        // reconfigure() tears down any existing connection and connects fresh
+        // ── 9. Activate bot in background ─────────────────────────────────
         tsManager.reconfigure(tsCfg).catch((err: Error) => {
           winstonLogger.warn(`[SETUP] Bot connect after setup: ${err.message}`);
         });
 
-        // ── 9. Auto-login the user who just completed setup ───────────────
+        // ── 10. Auto-login ────────────────────────────────────────────────
         const adminUser = await prisma.adminUser.findUnique({ where: { username: adminUsername } });
         if (adminUser) {
-          req.session.userId = adminUser.id;
+          req.session.userId   = adminUser.id;
           req.session.username = adminUser.username;
-          req.session.loginAt = Date.now();
+          req.session.loginAt  = Date.now();
         }
 
-        return res.json({ success: true, message: 'Setup complete. Redirecting to dashboard...' });
+        return res.json({
+          success: true,
+          message: 'Setup complete. Redirecting to dashboard...',
+          serverName: testResult.serverName,
+          detectedVirtualServerId: tsCfg.detectedVirtualServerId,
+        });
       } catch (err) {
         winstonLogger.error(`[SETUP] Setup failed: ${(err as Error).message}`);
         return res.status(500).json({ error: `Setup failed: ${(err as Error).message}` });

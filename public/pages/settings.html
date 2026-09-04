@@ -69,16 +69,52 @@
       <button id="btn-change-pass" class="btn btn-primary">🔒 Update Password</button>
     </div>
 
-    <!-- TeamSpeak Connection Test -->
+    <!-- TeamSpeak Connection Settings -->
     <div class="card">
-      <div class="card-title">🔌 TeamSpeak Connection</div>
+      <div class="card-title">🔌 TeamSpeak Connection Settings</div>
       <div id="alert-ts" class="alert"></div>
-      <div class="status-row">
-        <div class="status-dot" id="dot-ts-settings"></div>
-        <span>Status: <strong id="lbl-ts-settings">Loading...</strong></span>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-host-s">Server Host / IP</label>
+          <input id="ts-host-s" class="form-control" type="text" placeholder="ts.example.com"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-server-port-s">TeamSpeak Server Port</label>
+          <input id="ts-server-port-s" class="form-control" type="number" value="9987" min="1" max="65535"/>
+          <p class="form-hint">Port clients connect to (e.g. 9987). Auto-detects virtual server.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-query-port-s">ServerQuery Port</label>
+          <input id="ts-query-port-s" class="form-control" type="number" value="10011" min="1" max="65535"/>
+        </div>
       </div>
-      <div id="ts-version" class="fs-sm text-muted mt-1"></div>
-      <button id="btn-test-ts" class="btn btn-outline mt-2">🔌 Test Connection</button>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="ts-user-s">ServerQuery Username</label>
+          <input id="ts-user-s" class="form-control" type="text" placeholder="serveradmin"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-pass-s">ServerQuery Password</label>
+          <input id="ts-pass-s" class="form-control" type="password" placeholder="Enter new password to change"/>
+          <p class="form-hint">Leave blank to keep the current password.</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ts-nick-s">Bot Nickname</label>
+          <input id="ts-nick-s" class="form-control" type="text" placeholder="TS3-Bot"/>
+        </div>
+      </div>
+
+      <div class="status-row mt-2">
+        <div class="status-dot" id="dot-ts-settings"></div>
+        <span>Current status: <strong id="lbl-ts-settings">Loading...</strong></span>
+        <span id="lbl-ts-server" class="fs-sm text-muted" style="margin-left:12px;"></span>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="btn-save-ts" class="btn btn-primary">💾 Save &amp; Reconnect</button>
+        <button id="btn-test-ts" class="btn btn-outline">🔌 Test Current Connection</button>
+      </div>
     </div>
 
     <!-- System Info -->
@@ -108,30 +144,76 @@
 <script>
 async function loadSettings() {
   try {
-    const status = await API.status();
+    const [status, tsCfg] = await Promise.all([API.status(), API.get('/api/settings/ts')]);
+
     const tsStatus = status.tsStatus;
     const dotTs = document.getElementById('dot-ts-settings');
     dotTs.className = 'status-dot ' + (tsStatus==='connected'?'online':tsStatus==='reconnecting'?'warn':'offline');
     document.getElementById('lbl-ts-settings').textContent = tsStatus.charAt(0).toUpperCase()+tsStatus.slice(1);
     document.getElementById('sys-uptime').textContent = fmtUptime(status.uptime||0);
     setTSBadge(tsStatus);
+
+    // Populate TS fields
+    if (tsCfg.configured) {
+      document.getElementById('ts-host-s').value        = tsCfg.host || '';
+      document.getElementById('ts-server-port-s').value = tsCfg.serverPort || 9987;
+      document.getElementById('ts-query-port-s').value  = tsCfg.queryPort || 10011;
+      document.getElementById('ts-user-s').value        = tsCfg.username || '';
+      document.getElementById('ts-nick-s').value        = tsCfg.botNickname || 'TS3-Bot';
+      if (tsCfg.detectedVirtualServerId) {
+        document.getElementById('lbl-ts-server').textContent =
+          `(Virtual Server ID: ${tsCfg.detectedVirtualServerId} — detected automatically)`;
+      }
+    }
   } catch {}
 }
+
+document.getElementById('btn-save-ts').addEventListener('click', async () => {
+  const host       = document.getElementById('ts-host-s').value.trim();
+  const serverPort = document.getElementById('ts-server-port-s').value;
+  const queryPort  = document.getElementById('ts-query-port-s').value;
+  const username   = document.getElementById('ts-user-s').value.trim();
+  const password   = document.getElementById('ts-pass-s').value;
+  const botNickname= document.getElementById('ts-nick-s').value.trim() || 'TS3-Bot';
+
+  if (!host)     return showAlert('alert-ts', 'Host is required.', 'danger');
+  if (!username) return showAlert('alert-ts', 'Username is required.', 'danger');
+  if (!password) return showAlert('alert-ts', 'Password is required.', 'danger');
+
+  setLoading('btn-save-ts', true);
+  try {
+    const res = await API.put('/api/settings/ts', { host, serverPort: parseInt(serverPort), queryPort: parseInt(queryPort), username, password, botNickname });
+    if (res.success) {
+      let msg = '✅ Settings saved and bot reconnecting...';
+      if (res.serverName) msg += ` Connected to: "${res.serverName}"`;
+      if (res.detectedVirtualServerId) {
+        document.getElementById('lbl-ts-server').textContent = `(Virtual Server ID: ${res.detectedVirtualServerId} — detected automatically)`;
+      }
+      showAlert('alert-ts', msg, 'success');
+      document.getElementById('ts-pass-s').value = '';
+    }
+  } catch(err) {
+    showAlert('alert-ts', 'Save failed: ' + err.message, 'danger');
+  } finally {
+    setLoading('btn-save-ts', false, '💾 Save & Reconnect');
+  }
+});
 
 document.getElementById('btn-test-ts').addEventListener('click', async () => {
   setLoading('btn-test-ts', true);
   try {
     const res = await API.testTS();
     if (res.success) {
-      showAlert('alert-ts', '✅ Connection successful! ' + (res.version ? JSON.stringify(res.version) : ''), 'success');
-      document.getElementById('ts-version').textContent = res.version ? 'Server version: ' + JSON.stringify(res.version) : '';
+      let msg = '✅ Connection successful!';
+      if (res.serverName) msg += ` Server: "${res.serverName}"`;
+      showAlert('alert-ts', msg, 'success');
     } else {
-      showAlert('alert-ts', '❌ ' + res.message, 'warning');
+      showAlert('alert-ts', '❌ ' + (res.message || 'Connection failed'), 'warning');
     }
   } catch(err) {
     showAlert('alert-ts', 'Test failed: ' + err.message, 'danger');
   } finally {
-    setLoading('btn-test-ts', false, '🔌 Test Connection');
+    setLoading('btn-test-ts', false, '🔌 Test Current Connection');
   }
 });
 

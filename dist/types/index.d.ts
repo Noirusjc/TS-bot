@@ -51,10 +51,10 @@ export interface LogFilter {
 }
 export interface SetupPayload {
     tsHost: string;
+    tsServerPort: number;
     tsQueryPort: number;
     tsQueryUsername: string;
     tsQueryPassword: string;
-    tsVirtualServerId: number;
     tsBotNickname?: string;
     adminUsername: string;
     adminPassword: string;

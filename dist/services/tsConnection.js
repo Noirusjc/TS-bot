@@ -19,43 +19,27 @@ class TSConnectionManager {
         this.onDisconnectHandlers = [];
         this.keepAliveInterval = null;
     }
-    getStatus() {
-        return this.status;
-    }
-    getClient() {
-        return this.ts;
-    }
-    onConnect(handler) {
-        this.onConnectHandlers.push(handler);
-    }
-    onDisconnect(handler) {
-        this.onDisconnectHandlers.push(handler);
-    }
-    /**
-     * Connect using config from the database.
-     * If no config is saved yet, sets status to not_configured and returns.
-     */
+    getStatus() { return this.status; }
+    getClient() { return this.ts; }
+    onConnect(handler) { this.onConnectHandlers.push(handler); }
+    onDisconnect(handler) { this.onDisconnectHandlers.push(handler); }
+    /** Load config from DB and connect. */
     async connect() {
         if (this.destroyed)
             return;
-        // Load TS config from DB (set during setup wizard)
         const cfg = await (0, settings_1.getTSConfig)().catch(() => null);
         if (!cfg) {
             this.status = 'not_configured';
-            logger_1.winstonLogger.info('[TS] TeamSpeak not configured yet — waiting for setup wizard.');
+            logger_1.winstonLogger.info('[TS] Not configured yet — waiting for setup wizard.');
             return;
         }
         this.currentConfig = cfg;
         await this._connectWithConfig(cfg);
     }
-    /**
-     * Reconfigure and reconnect with new credentials.
-     * Called after setup wizard or when credentials change in admin panel.
-     */
+    /** Tear down and reconnect with new credentials. */
     async reconfigure(cfg) {
         logger_1.winstonLogger.info('[TS] Reconfiguring connection...');
         this.autoReconnect = false;
-        // Tear down existing connection
         this._stopKeepAlive();
         if (this.ts) {
             try {
@@ -74,11 +58,17 @@ class TSConnectionManager {
     async _connectWithConfig(cfg) {
         this.status = 'connecting';
         try {
-            logger_1.winstonLogger.info(`[TS] Connecting to ${cfg.host}:${cfg.queryPort} ...`);
+            logger_1.winstonLogger.info(`[TS] Connecting to ${cfg.host}:${cfg.queryPort} | game port: ${cfg.serverPort} ...`);
+            // ── Connect to ServerQuery and auto-select virtual server by game port.
+            // useByPort(gamePort, nickname) handles everything:
+            //   1. Connects to ServerQuery
+            //   2. Sends "use port=<gamePort>" to select the virtual server
+            //   3. Sets the bot nickname on that virtual server
+            // No manual virtual server ID needed.
             const ts = await ts3_nodejs_library_1.TeamSpeak.connect({
                 host: cfg.host,
                 queryport: cfg.queryPort,
-                serverport: 9987,
+                serverport: cfg.serverPort, // ← library selects VS by this port
                 username: cfg.username,
                 password: cfg.password,
                 nickname: cfg.botNickname,
@@ -90,10 +80,21 @@ class TSConnectionManager {
             this.ts = ts;
             this.status = 'connected';
             this.reconnectAttempt = 0;
-            void (0, logger_1.dbLog)({
-                eventType: 'TS_CONNECTED',
-                message: `Connected to TeamSpeak server ${cfg.host}:${cfg.queryPort}`,
-                level: 'INFO',
+            // Log the detected virtual server name for diagnostics
+            ts.serverInfo().then((info) => {
+                const name = info?.virtualserverName ?? 'Unknown';
+                logger_1.winstonLogger.info(`[TS] Connected to virtual server: "${name}" (port ${cfg.serverPort})`);
+                void (0, logger_1.dbLog)({
+                    eventType: 'TS_CONNECTED',
+                    message: `Connected to "${name}" on ${cfg.host}:${cfg.serverPort} via query port ${cfg.queryPort}`,
+                    level: 'INFO',
+                });
+            }).catch(() => {
+                void (0, logger_1.dbLog)({
+                    eventType: 'TS_CONNECTED',
+                    message: `Connected to ${cfg.host}:${cfg.serverPort} via query port ${cfg.queryPort}`,
+                    level: 'INFO',
+                });
             });
             ts.on('close', async () => {
                 if (this.destroyed || !this.autoReconnect)
@@ -150,9 +151,8 @@ class TSConnectionManager {
                 this.ts = null;
             }
             tsQueue_1.tsQueue.clearQueue();
-            if (this.currentConfig) {
+            if (this.currentConfig)
                 await this._connectWithConfig(this.currentConfig);
-            }
         }, delay);
     }
     _startKeepAlive() {
@@ -163,7 +163,7 @@ class TSConnectionManager {
             try {
                 await tsQueue_1.tsQueue.enqueue(() => this.ts.version());
             }
-            catch { /* connection will close and trigger reconnect */ }
+            catch { /* reconnect handles it */ }
         }, 4 * 60 * 1000);
     }
     _stopKeepAlive() {
@@ -172,9 +172,7 @@ class TSConnectionManager {
             this.keepAliveInterval = null;
         }
     }
-    /**
-     * Safe command executor — queues the command, returns null on any failure.
-     */
+    /** Safe command executor — returns null on any failure. */
     async run(fn) {
         if (!this.ts || this.status !== 'connected')
             return null;
@@ -185,16 +183,18 @@ class TSConnectionManager {
         });
     }
     /**
-     * One-shot test: connect, run version(), disconnect. Does NOT affect the
-     * persistent connection. Used by the setup wizard and settings page.
+     * One-shot connection test — auto-detects virtual server by game port.
+     * Returns server name + detected VS ID for display. Does not affect the
+     * persistent connection.
      */
     static async testConnection(cfg) {
         let ts = null;
         try {
+            // TeamSpeak.connect with serverport selects the virtual server automatically
             ts = await ts3_nodejs_library_1.TeamSpeak.connect({
                 host: cfg.host,
                 queryport: cfg.queryPort,
-                serverport: 9987,
+                serverport: cfg.serverPort,
                 username: cfg.username,
                 password: cfg.password,
                 nickname: 'TS3-Bot-Test',
@@ -202,11 +202,35 @@ class TSConnectionManager {
                 readyTimeout: 10000,
                 keepAlive: false,
             });
-            const version = await ts.version();
-            return { success: true, message: 'Connection successful', version };
+            // Get version and server info for confirmation
+            const [version, info] = await Promise.all([
+                ts.version(),
+                ts.serverInfo().catch(() => null),
+            ]);
+            const infoMap = info;
+            const serverName = infoMap?.virtualserverName ?? 'Unknown';
+            // Also retrieve the virtual server ID for informational purposes
+            let detectedVirtualServerId;
+            try {
+                const portResult = await ts.serverIdGetByPort(cfg.serverPort);
+                detectedVirtualServerId = parseInt(portResult.serverId, 10) || undefined;
+            }
+            catch { /* non-critical */ }
+            return {
+                success: true,
+                message: `Connected to "${serverName}"`,
+                serverName,
+                detectedVirtualServerId,
+                version,
+            };
         }
         catch (err) {
-            return { success: false, message: err.message };
+            const msg = err.message;
+            // Provide helpful hints for common errors
+            const hint = msg.toLowerCase().includes('failed') || msg.toLowerCase().includes('timeout')
+                ? ` — Check that port ${cfg.serverPort} is the correct game port and that the ServerQuery credentials are valid.`
+                : '';
+            return { success: false, message: msg + hint };
         }
         finally {
             if (ts) {

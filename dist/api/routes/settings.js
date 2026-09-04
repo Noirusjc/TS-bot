@@ -40,7 +40,6 @@ function createSettingsRouter(prisma) {
         }
     });
     // ── GET /api/settings/ts ──────────────────────────────────────────────────
-    // Return current TS config from DB (password redacted)
     router.get('/ts', async (_req, res) => {
         try {
             const cfg = await (0, settings_1.getTSConfig)();
@@ -49,12 +48,13 @@ function createSettingsRouter(prisma) {
             res.json({
                 configured: true,
                 host: cfg.host,
+                serverPort: cfg.serverPort,
                 queryPort: cfg.queryPort,
                 username: cfg.username,
-                // Never expose password
-                password: '••••••••',
-                virtualServerId: cfg.virtualServerId,
+                password: '••••••••', // never expose the actual password
                 botNickname: cfg.botNickname,
+                // detectedVirtualServerId is intentionally exposed here for debugging
+                detectedVirtualServerId: cfg.detectedVirtualServerId,
             });
         }
         catch {
@@ -62,52 +62,65 @@ function createSettingsRouter(prisma) {
         }
     });
     // ── PUT /api/settings/ts ──────────────────────────────────────────────────
-    // Update TS credentials and reconnect dynamically
+    // Update TS credentials — auto-detects virtual server, then reconnects.
     router.put('/ts', [
         (0, express_validator_1.body)('host').trim().notEmpty().withMessage('Host required'),
-        (0, express_validator_1.body)('queryPort').isInt({ min: 1, max: 65535 }).withMessage('Valid port required'),
+        (0, express_validator_1.body)('serverPort').isInt({ min: 1, max: 65535 }).withMessage('Valid TeamSpeak server port required (e.g. 9987)'),
+        (0, express_validator_1.body)('queryPort').isInt({ min: 1, max: 65535 }).withMessage('Valid ServerQuery port required (e.g. 10011)'),
         (0, express_validator_1.body)('username').trim().notEmpty().withMessage('Username required'),
         (0, express_validator_1.body)('password').notEmpty().withMessage('Password required'),
-        (0, express_validator_1.body)('virtualServerId').isInt({ min: 1 }).withMessage('Virtual server ID required'),
     ], async (req, res) => {
         const errors = (0, express_validator_1.validationResult)(req);
         if (!errors.isEmpty())
             return res.status(400).json({ error: errors.array()[0].msg });
         try {
-            const { host, queryPort, username, password, virtualServerId, botNickname } = req.body;
+            const { host, serverPort, queryPort, username, password, botNickname } = req.body;
             const cfg = {
                 host,
+                serverPort: parseInt(serverPort, 10),
                 queryPort: parseInt(queryPort, 10),
                 username,
                 password,
-                virtualServerId: parseInt(virtualServerId, 10),
                 botNickname: botNickname || 'TS3-Bot',
             };
-            // Test before saving
+            // Test and auto-detect before saving
             const test = await tsConnection_1.TSConnectionManager.testConnection(cfg);
             if (!test.success) {
                 return res.status(400).json({ error: `Connection test failed: ${test.message}` });
             }
-            await (0, settings_1.saveTSConfig)(cfg);
-            void (0, logger_1.dbLog)({ eventType: 'TS_CREDENTIALS_UPDATED', message: `TS credentials updated. Host: ${host}` });
-            // Reconfigure live connection — runs in background
-            tsConnection_1.tsManager.reconfigure(cfg).catch(() => { });
-            res.json({ success: true, message: 'TS credentials saved and reconnecting...' });
+            // Persist with detected virtual server ID
+            const cfgToSave = {
+                ...cfg,
+                detectedVirtualServerId: test.detectedVirtualServerId,
+            };
+            await (0, settings_1.saveTSConfig)(cfgToSave);
+            void (0, logger_1.dbLog)({
+                eventType: 'TS_CREDENTIALS_UPDATED',
+                message: `TS credentials updated. Host: ${host}:${serverPort}, VS ID: ${test.detectedVirtualServerId ?? 'auto'}`,
+            });
+            // Reconnect in background
+            tsConnection_1.tsManager.reconfigure(cfgToSave).catch(() => { });
+            res.json({
+                success: true,
+                message: 'Settings saved and reconnecting...',
+                serverName: test.serverName,
+                detectedVirtualServerId: test.detectedVirtualServerId,
+            });
         }
         catch {
             res.status(500).json({ error: 'Failed to update TS settings' });
         }
     });
     // ── POST /api/settings/ts-test ────────────────────────────────────────────
-    // Quick live connection test using current saved config
     router.post('/ts-test', async (_req, res) => {
         try {
             const status = tsConnection_1.tsManager.getStatus();
             if (status === 'connected') {
                 const version = await tsConnection_1.tsManager.run((ts) => ts.version());
-                return res.json({ success: !!version, status, version });
+                const info = await tsConnection_1.tsManager.run((ts) => ts.serverInfo()).catch(() => null);
+                const serverName = info?.virtualserverName;
+                return res.json({ success: !!version, status, version, serverName });
             }
-            // Not connected — try a fresh test with saved config
             const cfg = await (0, settings_1.getTSConfig)();
             if (!cfg)
                 return res.json({ success: false, message: 'TeamSpeak not configured' });

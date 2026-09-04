@@ -18,10 +18,11 @@ export interface BaseConfig {
 export interface TSConfig {
     host: string;
     queryPort: number;
+    serverPort: number;
     username: string;
     password: string;
-    virtualServerId: number;
     botNickname: string;
+    detectedVirtualServerId?: number;
 }
 export declare function loadBaseConfig(): BaseConfig;
 export declare const config: BaseConfig;

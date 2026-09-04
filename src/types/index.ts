@@ -58,12 +58,12 @@ export interface LogFilter {
 }
 
 export interface SetupPayload {
-  // TeamSpeak
+  // TeamSpeak — Virtual Server ID is detected automatically from tsServerPort
   tsHost: string;
+  tsServerPort: number;     // game port (e.g. 9987) — used to auto-select virtual server
   tsQueryPort: number;
   tsQueryUsername: string;
   tsQueryPassword: string;
-  tsVirtualServerId: number;
   tsBotNickname?: string;
   // Admin account
   adminUsername: string;
